@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   CheckCircle2,
+  ChevronRight,
   CornerDownLeft,
   Play,
   Sparkles,
@@ -52,6 +53,11 @@ export default function SuggestionBar({ analysis, ghost, onApply }) {
             <CornerDownLeft size={12} />
             <kbd>Tab</kbd>
             <span>aceita</span>
+          </div>
+        ) : suggestions.length > 3 ? (
+          <div className="rail-hint">
+            <span>deslize para ver mais</span>
+            <ChevronRight size={12} />
           </div>
         ) : null}
       </div>

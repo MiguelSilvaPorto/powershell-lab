@@ -288,6 +288,13 @@ export default function App() {
     }
     setEntries((previous) => [...previous.slice(-59), entry])
     completeLessonTasks(command, result, nextWorld)
+    if (!result.ok && analysis.kind === 'natural' && topIntent) {
+      pushToast({
+        title: 'Isso parece uma intenção',
+        message: `Escolha uma sugestão para transformar em ${topIntent.cmdlet}.`,
+        tone: 'info',
+      })
+    }
     focusEditor()
   }
 

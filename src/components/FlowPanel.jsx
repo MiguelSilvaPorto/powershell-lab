@@ -55,7 +55,7 @@ function sourceDescription(categoryId, world) {
     case 'ad':
       return { label: 'Domínio lab.local', detail: `${world.ad.users.length} usuários · ${world.ad.groups.length} grupos · ${world.ad.computers.length} computadores` }
     case 'arquivos':
-      return { label: 'Sistema de arquivos', detail: `${countFiles(world.filesystem?.['C:'])} itens em C:` }
+      return { label: 'Sistema de arquivos', detail: `${countFiles(world.filesystem?.['C:'])} ${countFiles(world.filesystem?.['C:']) === 1 ? 'item' : 'itens'} em C:` }
     case 'texto':
       return { label: 'Arquivos de texto', detail: 'conteúdo em C:\\Documentos, C:\\Logs e C:\\Temp' }
     case 'rede':
@@ -403,7 +403,7 @@ export default function FlowPanel({
               {intentPreview?.stages?.filter((stage) => stage.cmdlet || stage.commandName).map((stage, index, list) => (
                 <div key={`${stage.cmdlet}-${index}`}>
                   <FlowStageNode stage={stage} index={index} suggested />
-                  {index < list.length - 1 ? <FlowEdge label={stage.outputCount != null ? `${stage.outputCount} itens` : 'segue'} tone={outputTone} /> : null}
+                  {index < list.length - 1 ? <FlowEdge label={stage.outputCount != null ? objectCountLabel(stage.outputCount) : 'segue'} tone={outputTone} /> : null}
                 </div>
               ))}
               {intentPreview?.stages?.length ? <FlowEdge label={intentPreview.objects?.length ? objectCountLabel(intentPreview.objects.length) : effects.length ? 'impacto' : 'resultado'} tone={outputTone} /> : null}
@@ -438,7 +438,7 @@ export default function FlowPanel({
                   <FlowStageNode stage={stage} index={index} />
                 </div>
               ))}
-              <FlowEdge label={lastStage?.outputCount != null ? `${lastStage.outputCount} objetos` : 'segue'} tone={outputTone} dashed />
+              <FlowEdge label={lastStage?.outputCount != null ? objectCountLabel(lastStage.outputCount) : 'segue'} tone={outputTone} dashed />
               <button type="button" className="flow-next-stage" onClick={() => analysis.suggestions?.[0] && onApplySuggestion(analysis.suggestions[0])}>
                 <span className="flow-node-icon"><Play size={14} /></span>
                 <span>
