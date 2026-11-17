@@ -242,7 +242,7 @@ server/
   realPowerShell.mjs serviço de sessões, timeout e proteção local
   viteRealPowerShellPlugin.mjs endpoints /api/pwsh/* do Vite
 scripts/test.mjs     suíte de verificação sem compilação
-docs/                capturas usadas neste README
+docs/                capturas e plano de evolução
 ```
 
 ## Limites e próximos passos
@@ -258,5 +258,7 @@ docs/                capturas usadas neste README
 ## Repositório
 
 [github.com/MiguelSilvaPorto/powershell-lab](https://github.com/MiguelSilvaPorto/powershell-lab)
+
+O plano completo de evolução, com decisões pendentes e perguntas abertas, está em [docs/PLANO.md](docs/PLANO.md).
 
 Este projeto é um laboratório pessoal de aprendizagem construído em JavaScript, com foco em clareza visual do modelo de objetos e do pipeline do PowerShell.
