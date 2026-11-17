@@ -485,6 +485,7 @@ kbd {
 }
 
 .breadcrumb strong {
+  flex-shrink: 0;
   max-width: 270px;
   color: var(--text-soft);
   font-weight: 600;

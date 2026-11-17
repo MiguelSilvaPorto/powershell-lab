@@ -39,7 +39,7 @@ export default function TopBar({
           {activeCategory ? <TrackIcon category={activeCategory} size={13} /> : <Boxes size={13} />}
           <span>{activeCategory?.name ?? 'Laboratório livre'}</span>
           <ChevronRight size={13} className="breadcrumb-separator" />
-          <strong>{activeLesson?.title ?? 'Explorar'}</strong>
+          <strong title={activeLesson?.title ?? 'Explorar'}>{activeLesson?.title ?? 'Explorar'}</strong>
         </button>
       </div>
 
