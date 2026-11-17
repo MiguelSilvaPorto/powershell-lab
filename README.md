@@ -17,7 +17,9 @@ O **simulador é o modo padrão**. Quando quiser, você pode ativar o modo **Meu
 - **Impacto antes/depois** — cartões visuais para criação de usuários no AD, mapeamento de unidades, mudanças no registro, serviços, tarefas, arquivos e mais.
 - **29 trilhas guiadas em 17 categorias** — 111 tarefas validadas por padrão de comando e, quando necessário, pelo estado real do mundo simulado.
 - **Mundo simulado navegável** — domínio `lab.local`, pessoas, grupos, computadores, árvore de arquivos, compartilhamentos e unidades mapeadas.
-- **Persistência local** — progresso, mundo e histórico do simulador ficam no navegador.
+- **Biblioteca de atalhos** — salve comandos que funcionaram, fixe os mais usados na barra lateral, edite, crie variações por duplicação e transforme valores em campos `{{parâmetro}}`.
+- **Sugestões de valores** — em vez de decorar nomes, escolha um usuário do AD, processo, serviço ou grupo em uma lista lida do simulador ou do seu PC.
+- **Persistência local** — progresso, mundo, histórico do simulador e atalhos ficam no navegador.
 - **Modo real opcional** — conecta o console ao PowerShell do computador, com consentimento, indicador permanente de execução real e sem desfazer automático.
 - **Aulas sempre seguras** — as tarefas das trilhas são validadas contra o simulador; o modo real é para explorar o seu próprio ambiente.
 
@@ -41,7 +43,7 @@ O projeto é escrito em **JavaScript puro + JSX** e roda direto no servidor de d
 ### Testes
 
 ```bash
-npm test     # 559 verificações das trilhas, simulador, intenções e sugestões
+npm test     # 575 verificações das trilhas, simulador, intenções, atalhos e sugestões
 npm run build
 ```
 
@@ -88,6 +90,44 @@ O servidor local de execução:
 - exige um cabeçalho próprio e a mesma origem;
 - mantém no máximo três sessões, com timeout de 30 s por comando;
 - limita o tamanho da saída e não persiste comandos em log.
+
+## Atalhos reutilizáveis
+
+![Biblioteca de atalhos do PS Lab com comandos salvos, versões e parâmetros](docs/pslab-shortcuts.png)
+
+O atalho começa de um comando que você já testou. Execute-o no console, clique no ícone de marcador ao lado do botão **Executar** (ou use **Atalhos → Salvar comando atual**) e dê um nome. Na edição, troque os valores que mudam por campos:
+
+```powershell
+Unlock-ADAccount -Identity {{usuario}}
+Restart-Service -Name {{servico}}
+Get-ChildItem {{caminho}} -Recurse
+```
+
+O editor detecta cada `{{parâmetro}}` e permite escolher uma fonte de sugestões. Ao executar, o formulário carrega as opções e monta o comando final antes de rodar:
+
+| Fonte | Exemplos de valores |
+| --- | --- |
+| Usuários do AD | `ana.silva`, `felipe.lima` |
+| Contas locais | contas da própria máquina |
+| Grupos do AD / locais | grupos do domínio ou do computador |
+| Processos | processos em execução |
+| Serviços | serviços instalados |
+| Computadores do AD | nomes registrados no domínio |
+| Tarefas agendadas | tarefas do Windows |
+| OUs do AD | DNs das unidades organizacionais |
+
+Fluxo típico de um atalho como **Desbloquear usuário do AD**:
+
+1. Abra **Atalhos** ou clique no atalho fixado na barra lateral.
+2. Digite parte do login ou escolha `felipe.lima` na lista.
+3. Confira o comando final: `Unlock-ADAccount -Identity felipe.lima`.
+4. Execute no simulador — ou, no modo **Meu PC**, execute de verdade com a confirmação de risco já exibida.
+
+![Formulário de execução do atalho com a lista de usuários do AD e o comando final](docs/pslab-shortcut-run.png)
+
+Cada atalho guarda a última seleção, a contagem de execuções, a data do último uso e o estado **fixado**. Na biblioteca você pode **editar** (a versão sobe), **duplicar** para criar uma variação, **fixar/desafixar** e **excluir** com confirmação.
+
+No modo real, as listas são lidas do seu computador pelo PowerShell. Se o módulo do Active Directory (RSAT) não estiver instalado, a consulta mostra o erro e o campo continua editável para você digitar o valor manualmente. Os atalhos ficam apenas no `localStorage` deste navegador, em `pslab.shortcuts.v1`, e não são enviados para a nuvem.
 
 ## Categorias
 
@@ -173,12 +213,13 @@ src/
     intents.js       intenções em linguagem natural
     lessons.js       29 aulas, 111 tarefas e verificações de estado
     seed.js          mundo inicial: filesystem, AD, rede, registro
+    shortcuts.js     modelos, placeholders e fontes de valores dos atalhos
   editor/            linguagem PowerShell para o CodeMirror
   engine/
     parser.js        pipelines, strings, parâmetros e scriptblocks
     simulator.js     executor simulado e efeitos visuais
     suggestions.js   intenções, completions, ghosts e próximos passos
-  App.jsx            estado da sessão, progresso e integração
+  App.jsx            estado da sessão, progresso, atalhos e integração
   styles.css         design system e layout responsivo
 server/
   bridge.ps1        loop persistente que executa comandos no pwsh real
@@ -192,9 +233,10 @@ docs/                capturas usadas neste README
 
 - O **simulador** cobre o catálogo de 124 cmdlets e as 29 trilhas. Ele não executa efeitos reais.
 - O **modo real** executa comandos no seu usuário, mas não é um sandbox, não tem desfazer automático e não é persistido entre recarregamentos. Comandos interativos podem atingir o timeout de 30 s.
+- As listas de atalhos no modo real dependem dos módulos disponíveis: Active Directory exige RSAT; contas e grupos locais variam entre Windows, Linux e macOS. Quando a consulta falha, o valor ainda pode ser digitado à mão.
 - O modo real foi pensado para `npm run dev` local; não há backend de execução no build estático.
 - O catálogo e o mundo simulado cobrem o essencial; novos módulos podem ser adicionados em `src/data/catalog.js` e no simulador.
-- O mundo, progresso e histórico do simulador ficam no `localStorage`; limpar os dados do site reinicia o laboratório.
+- O mundo, progresso, histórico e atalhos ficam no `localStorage`; limpar os dados do site reinicia o laboratório e apaga os atalhos salvos.
 - Roadmap natural: execução real no Windows com módulos RSAT/AD, auditoria de comandos, confirmação por comando destrutivo, mais objetos de AD, eventos, certificados e Microsoft Graph.
 
 ## Repositório

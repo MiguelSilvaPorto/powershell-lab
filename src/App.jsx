@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight,
+  BookmarkPlus,
   CheckCircle2,
   CornerDownLeft,
   Eraser,
@@ -15,6 +16,11 @@ import { CATEGORIES, categoryFor, findCommand } from './data/catalog.js'
 import { CURATED_INTENTS } from './data/intents.js'
 import { LESSONS, LESSON_MAP } from './data/lessons.js'
 import { WORLD_VERSION, createInitialWorld } from './data/seed.js'
+import {
+  SHORTCUT_PROVIDERS,
+  createShortcutDraft,
+  normalizeShortcut,
+} from './data/shortcuts.js'
 import { executeLine, previewLine } from './engine/simulator.js'
 import { analyzeLine, applySuggestion, buildVerificationSuggestions, suggestionsForFailure } from './engine/suggestions.js'
 import CommandEditor from './components/CommandEditor.jsx'
@@ -30,6 +36,9 @@ import HelpModal from './components/HelpModal.jsx'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import ToastStack from './components/ToastStack.jsx'
 import EngineModal from './components/EngineModal.jsx'
+import CommandLibraryModal from './components/CommandLibraryModal.jsx'
+import ShortcutEditorModal from './components/ShortcutEditorModal.jsx'
+import ShortcutRunModal from './components/ShortcutRunModal.jsx'
 
 const WORLD_KEY = 'pslab.world.v3'
 const API_HEADERS = { 'x-pslab-real': '1' }
@@ -37,6 +46,7 @@ const ACTIVE_LESSON_KEY = 'pslab.activeLesson.v1'
 const COMPLETED_TASKS_KEY = 'pslab.completedTasks.v1'
 const HISTORY_KEY = 'pslab.history.v1'
 const COMMANDS_RUN_KEY = 'pslab.commandsRun.v1'
+const SHORTCUTS_KEY = 'pslab.shortcuts.v1'
 
 function readStorage(key, fallback) {
   try {
@@ -115,6 +125,11 @@ export default function App() {
   const [activeLessonId, setActiveLessonId] = usePersistentState(ACTIVE_LESSON_KEY, null)
   const [completedTasks, setCompletedTasks] = usePersistentState(COMPLETED_TASKS_KEY, {})
   const [commandsRun, setCommandsRun] = usePersistentState(COMMANDS_RUN_KEY, 0)
+  const [storedShortcuts, setStoredShortcuts] = usePersistentState(SHORTCUTS_KEY, [])
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [shortcutEditor, setShortcutEditor] = useState(null)
+  const [shortcutRunner, setShortcutRunner] = useState(null)
+  const [probeSessionId] = useState(newRealSessionId)
   const [engineMode, setEngineMode] = useState('sim')
   const [engineModalOpen, setEngineModalOpen] = useState(false)
   const [realHealth, setRealHealth] = useState({ loading: true, available: false })
@@ -135,6 +150,10 @@ export default function App() {
 
   const activeLesson = LESSON_MAP.get(activeLessonId) ?? null
   const activeCategory = activeLesson ? categoryFor(activeLesson.cat) : null
+  const shortcuts = useMemo(
+    () => (Array.isArray(storedShortcuts) ? storedShortcuts.map(normalizeShortcut) : []),
+    [storedShortcuts],
+  )
   const preview = useMemo(() => {
     if (!input.trim()) return null
     return previewLine(input, world)
@@ -627,6 +646,178 @@ export default function App() {
     }
   }
 
+  function openShortcutLibrary() {
+    setLibraryOpen(true)
+    setShortcutEditor(null)
+    setShortcutRunner(null)
+  }
+
+  function openShortcutEditorForCurrent() {
+    const command = input.trim()
+    if (!command) return
+    const firstToken = command.split(/\s+/)[0]
+    const commandInfo = findCommand(firstToken)
+    const draft = createShortcutDraft({
+      command,
+      name: commandInfo?.name ?? firstToken,
+      description: commandInfo?.summary ?? '',
+    })
+    const fromLibrary = libraryOpen
+    setLibraryOpen(false)
+    setShortcutRunner(null)
+    setShortcutEditor({ mode: 'create', draft, fromLibrary })
+  }
+
+  function closeShortcutEditor() {
+    if (shortcutEditor?.fromLibrary) setLibraryOpen(true)
+    setShortcutEditor(null)
+  }
+
+  function editShortcut(shortcut) {
+    const fromLibrary = libraryOpen
+    setLibraryOpen(false)
+    setShortcutRunner(null)
+    setShortcutEditor({ mode: 'edit', draft: shortcut, fromLibrary })
+  }
+
+  function duplicateShortcut(shortcut) {
+    const draft = normalizeShortcut({
+      ...shortcut,
+      id: '',
+      name: `${shortcut.name} (variação)`,
+      pinned: false,
+      version: 1,
+      runCount: 0,
+      lastRunAt: null,
+      lastValues: {},
+      createdAt: null,
+      updatedAt: null,
+    })
+    const fromLibrary = libraryOpen
+    setLibraryOpen(false)
+    setShortcutRunner(null)
+    setShortcutEditor({ mode: 'create', draft, fromLibrary })
+  }
+
+  function useShortcutModel(model) {
+    const draft = createShortcutDraft({
+      command: model.command,
+      name: model.name,
+      description: model.description,
+    })
+    const fromLibrary = libraryOpen
+    setLibraryOpen(false)
+    setShortcutEditor({ mode: 'create', draft, fromLibrary })
+  }
+
+  function saveShortcut(data) {
+    if (!shortcutEditor) return
+    const clean = normalizeShortcut(data)
+    const editing = shortcutEditor.mode === 'edit'
+    setStoredShortcuts((previous) => {
+      const list = Array.isArray(previous) ? previous.map(normalizeShortcut) : []
+      if (editing) {
+        return list.map((shortcut) => {
+          if (shortcut.id !== clean.id) return shortcut
+          return {
+            ...clean,
+            createdAt: shortcut.createdAt,
+            updatedAt: new Date().toISOString(),
+            version: Math.max(shortcut.version + 1, clean.version),
+            runCount: shortcut.runCount,
+            lastRunAt: shortcut.lastRunAt,
+            lastValues: shortcut.lastValues,
+            pinned: clean.pinned,
+          }
+        })
+      }
+      return [clean, ...list]
+    })
+    setShortcutEditor(null)
+    setLibraryOpen(true)
+    pushToast({
+      title: editing ? 'Atalho atualizado' : 'Atalho salvo',
+      message: clean.name,
+      tone: 'success',
+    })
+  }
+
+  function deleteShortcut(shortcut) {
+    setConfirmState({
+      title: 'Excluir este atalho?',
+      description: `“${shortcut.name}” será removido da biblioteca. O comando e os valores salvos serão perdidos.`,
+      confirmLabel: 'Excluir atalho',
+      tone: 'danger',
+      onConfirm: () => {
+        setStoredShortcuts((previous) => (Array.isArray(previous) ? previous.map(normalizeShortcut) : []).filter((item) => item.id !== shortcut.id))
+        setConfirmState(null)
+        pushToast({ title: 'Atalho excluído', message: shortcut.name, tone: 'info' })
+      },
+    })
+  }
+
+  function toggleShortcutPin(shortcut) {
+    setStoredShortcuts((previous) => (Array.isArray(previous) ? previous.map(normalizeShortcut) : []).map((item) => (
+      item.id === shortcut.id ? { ...item, pinned: !item.pinned } : item
+    )))
+  }
+
+  function openShortcutRunner(shortcut) {
+    setLibraryOpen(false)
+    setShortcutEditor(null)
+    setShortcutRunner(shortcut)
+  }
+
+  function executeShortcut(shortcut, finalCommand, values) {
+    const updated = normalizeShortcut({
+      ...shortcut,
+      runCount: shortcut.runCount + 1,
+      lastRunAt: new Date().toISOString(),
+      lastValues: { ...values },
+    })
+    setStoredShortcuts((previous) => (Array.isArray(previous) ? previous.map(normalizeShortcut) : []).map((item) => (
+      item.id === shortcut.id ? updated : item
+    )))
+    setShortcutRunner(null)
+    setInput(finalCommand)
+    setHistoryIndex(null)
+    executeCommand(finalCommand)
+  }
+
+  async function loadShortcutProvider(providerKey) {
+    const provider = SHORTCUT_PROVIDERS[providerKey]
+    if (!provider) return []
+    if (!isReal) {
+      const values = provider.simulate(world)
+      return [...new Set(values.map(String).map((value) => value.trim()).filter(Boolean))].slice(0, 300)
+    }
+    if (!realHealth.available) {
+      throw new Error('O modo real está indisponível. Não foi possível ler as opções do seu PC.')
+    }
+    const response = await fetch('/api/pwsh/exec', {
+      method: 'POST',
+      headers: { ...API_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: provider.realQuery, sessionId: probeSessionId }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || 'Falha ao consultar o PowerShell real.')
+    if (!payload.ok) {
+      const message = String(payload.output || payload.error || 'A consulta não retornou resultados.')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .slice(0, 1)
+        .join(' ')
+      throw new Error(message || 'A consulta não retornou resultados.')
+    }
+    const values = String(payload.output || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 300)
+    return [...new Set(values)]
+  }
+
   const nextLesson = LESSONS[(LESSONS.findIndex((lesson) => lesson.id === activeLessonId) + 1) % LESSONS.length] ?? LESSONS[0]
 
   return (
@@ -637,6 +828,8 @@ export default function App() {
         activeCategory={activeCategory}
         engineMode={engineMode}
         onOpenEngine={() => { setEngineModalOpen(true); refreshRealHealth() }}
+        shortcutCount={shortcuts.length}
+        onOpenLibrary={openShortcutLibrary}
         onOpenWorld={() => setWorldOpen(true)}
         onOpenHelp={() => setHelpOpen(true)}
         onOpenSidebar={() => setSidebarOpen(true)}
@@ -650,6 +843,9 @@ export default function App() {
           activeLessonId={activeLessonId}
           completedTasks={completedTasks}
           commandsRun={commandsRun}
+          shortcuts={shortcuts}
+          onOpenShortcutLibrary={openShortcutLibrary}
+          onRunShortcut={openShortcutRunner}
           onSelectLesson={(id) => {
             setActiveLessonId(id)
             setSidebarOpen(false)
@@ -704,6 +900,9 @@ export default function App() {
                 </button>
                 <button type="button" className="icon-button" onClick={() => { setInput(''); setHistoryIndex(null); focusEditor() }} title="Limpar o comando" aria-label="Limpar o comando" disabled={!input}>
                   <Eraser size={15} />
+                </button>
+                <button type="button" className="icon-button" onClick={openShortcutEditorForCurrent} title="Salvar comando atual como atalho" aria-label="Salvar comando atual como atalho" disabled={!input.trim()}>
+                  <BookmarkPlus size={15} />
                 </button>
                 <button
                   type="button"
@@ -829,6 +1028,45 @@ export default function App() {
           onClose={() => setWorldOpen(false)}
           onInsert={(code) => insertIntoEditor(code, { closeWorld: true })}
           onResetWorld={requestResetWorld}
+        />
+      ) : null}
+
+      {libraryOpen ? (
+        <CommandLibraryModal
+          shortcuts={shortcuts}
+          currentCommand={input}
+          isReal={isReal}
+          onClose={() => setLibraryOpen(false)}
+          onRun={openShortcutRunner}
+          onEdit={editShortcut}
+          onDuplicate={duplicateShortcut}
+          onDelete={deleteShortcut}
+          onTogglePin={toggleShortcutPin}
+          onSaveCurrent={openShortcutEditorForCurrent}
+          onUseModel={useShortcutModel}
+        />
+      ) : null}
+
+      {shortcutEditor ? (
+        <ShortcutEditorModal
+          draft={shortcutEditor.draft}
+          mode={shortcutEditor.mode}
+          isReal={isReal}
+          onClose={closeShortcutEditor}
+          onSave={saveShortcut}
+        />
+      ) : null}
+
+      {shortcutRunner ? (
+        <ShortcutRunModal
+          shortcut={shortcutRunner}
+          isReal={isReal}
+          realBusy={realBusy}
+          loadOptions={loadShortcutProvider}
+          onClose={() => setShortcutRunner(null)}
+          onExecute={(finalCommand, values) => executeShortcut(shortcutRunner, finalCommand, values)}
+          onEdit={editShortcut}
+          onDuplicate={duplicateShortcut}
         />
       ) : null}
 

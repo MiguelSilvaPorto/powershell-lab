@@ -1,6 +1,13 @@
 import { CATEGORIES, COMMANDS } from '../src/data/catalog.js'
 import { CURATED_INTENTS } from '../src/data/intents.js'
 import { LESSONS } from '../src/data/lessons.js'
+import {
+  SHORTCUT_PROVIDERS,
+  extractPlaceholders,
+  inferProvider,
+  normalizeShortcut,
+  renderShortcutCommand,
+} from '../src/data/shortcuts.js'
 import { WORLD_VERSION, createInitialWorld } from '../src/data/seed.js'
 import { executeLine, implementedCommands } from '../src/engine/simulator.js'
 import { analyzeLine, applySuggestion } from '../src/engine/suggestions.js'
@@ -168,6 +175,39 @@ for (const intent of CURATED_INTENTS) {
   assert(applySuggestion(processLine, pipelineSuggestion, processAnalysis).includes(' | '), 'A sugestão de pipeline deveria adicionar um pipe.')
   const param = analyzeLine('Get-Process -Na', world, null)
   assert(param.ghost?.suffix?.startsWith('me'), 'O ghost de -Na deveria completar -Name.')
+}
+
+// Atalhos: placeholders, sugestões, versões e comando final.
+{
+  const placeholders = extractPlaceholders('Unlock-ADAccount -Identity {{usuario}} -Verbose {{grupo}} {{usuario}}')
+  assert(placeholders.length === 2 && placeholders[0] === 'usuario' && placeholders[1] === 'grupo', 'Placeholders deveriam ser únicos e preservar a ordem.')
+  assert(inferProvider('usuario', 'Unlock-ADAccount -Identity {{usuario}}') === 'adUsers', 'Usuário de ADAccount deveria usar a lista de usuários do AD.')
+  assert(inferProvider('processo', 'Stop-Process -Name {{processo}}') === 'processes', 'Processo deveria usar a lista de processos.')
+  assert(inferProvider('servico', 'Restart-Service -Name {{servico}}') === 'services', 'Serviço deveria usar a lista de serviços.')
+  const simple = renderShortcutCommand('Unlock-ADAccount -Identity {{usuario}}', { usuario: 'felipe.lima' })
+  assert(simple === 'Unlock-ADAccount -Identity felipe.lima', 'O comando final deveria substituir o placeholder simples.')
+  const quoted = renderShortcutCommand('Restart-Service -Name {{servico}}', { servico: 'Print Spooler' })
+  assert(quoted.includes("'Print Spooler'"), 'Valores com espaço deveriam ser citados no comando final.')
+  const preQuoted = renderShortcutCommand('Restart-Service -Name "{{servico}}"', { servico: 'Print Spooler' })
+  assert(preQuoted === 'Restart-Service -Name "Print Spooler"', 'Placeholders já citados não deveriam receber novas aspas.')
+  const escaped = renderShortcutCommand('Get-ADUser -Identity {{usuario}}', { usuario: "O'Brien" })
+  assert(escaped === "Get-ADUser -Identity 'O''Brien'", 'Aspas simples deveriam ser escapadas no comando final.')
+  const expression = renderShortcutCommand('Get-Process -Name {{processo}}', { processo: '$env:COMPUTERNAME' })
+  assert(expression === 'Get-Process -Name $env:COMPUTERNAME', 'Expressões do PowerShell não deveriam receber aspas.')
+  const leadingDash = renderShortcutCommand('Get-ADUser -Identity {{usuario}}', { usuario: '-Filter' })
+  assert(leadingDash === "Get-ADUser -Identity '-Filter'", 'Valores que parecem parâmetros deveriam ser citados.')
+  const caseInsensitive = renderShortcutCommand('Get-ADUser -Identity {{usuario}}; Get-ADUser -Identity {{Usuario}}', { usuario: 'ana.silva' })
+  assert(caseInsensitive === 'Get-ADUser -Identity ana.silva; Get-ADUser -Identity ana.silva', 'O mesmo campo em maiúsculas e minúsculas deveria usar o mesmo valor.')
+  const shortcut = normalizeShortcut({ name: 'Desbloquear', command: 'Unlock-ADAccount -Identity {{usuario}}' })
+  assert(shortcut.parameters.length === 1 && shortcut.parameters[0].provider === 'adUsers', 'O atalho normalizado deveria inferir o provedor.')
+  const simulatedUsers = SHORTCUT_PROVIDERS.adUsers.simulate(createInitialWorld())
+  assert(simulatedUsers.includes('felipe.lima'), 'O provedor simulado deveria listar usuários do AD.')
+  const simulatedProcesses = SHORTCUT_PROVIDERS.processes.simulate(createInitialWorld())
+  assert(simulatedProcesses.includes('explorer') && simulatedProcesses.filter((name) => name === 'chrome').length === 1, 'O provedor simulado deveria listar processos únicos.')
+  assert(SHORTCUT_PROVIDERS.processes.realQuery.includes('$IsWindows'), 'A consulta real de processos deveria preservar nomes com espaço no Windows.')
+  const world = createInitialWorld()
+  const executed = run(renderShortcutCommand(shortcut.command, { usuario: 'felipe.lima' }), world)
+  assert(executed.ok && executed.effects.some((item) => item.type === 'ad:account'), 'Executar o atalho deveria desbloquear a conta no simulador.')
 }
 
 if (failures.length) {

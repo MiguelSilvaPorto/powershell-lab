@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, BookOpen, Check, ChevronDown, Compass, RotateCcw, Search, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, BookMarked, BookOpen, Check, ChevronDown, ChevronRight, Compass, Play, RotateCcw, Search, Trash2, X } from 'lucide-react'
 import { CATEGORIES, categoryFor } from '../data/catalog.js'
 import { LESSONS } from '../data/lessons.js'
 import TrackIcon from './TrackIcon.jsx'
@@ -13,9 +13,12 @@ export default function Sidebar({
   activeLessonId,
   completedTasks,
   commandsRun,
+  shortcuts = [],
+  onOpenShortcutLibrary,
   onSelectLesson,
   onSelectFree,
   onOpenLesson,
+  onRunShortcut,
   onResetWorld,
   onResetProgress,
   isOpen,
@@ -49,6 +52,13 @@ export default function Sidebar({
       return matchingLessons.length > 0 || category.name.toLowerCase().includes(normalizedQuery) || category.blurb.toLowerCase().includes(normalizedQuery)
     })
   }, [normalizedQuery])
+
+  const quickShortcuts = useMemo(() => [...shortcuts]
+    .sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      return String(b.lastRunAt || b.updatedAt).localeCompare(String(a.lastRunAt || a.updatedAt))
+    })
+    .slice(0, 3), [shortcuts])
 
   const totalTasks = LESSONS.reduce((sum, lesson) => sum + lesson.tasks.length, 0)
   const doneTasks = LESSONS.reduce((sum, lesson) => sum + lesson.tasks.filter((task) => completedTasks[task.id]).length, 0)
@@ -126,6 +136,29 @@ export default function Sidebar({
             <small>{commandsRun} {commandsRun === 1 ? 'comando executado' : 'comandos executados'}</small>
           </div>
         </div>
+
+        <div className="sidebar-section-heading">
+          <span>Meus atalhos</span>
+          <span>{shortcuts.length}</span>
+        </div>
+        <button type="button" className="shortcut-library-entry" onClick={onOpenShortcutLibrary}>
+          <span className="shortcut-library-icon"><BookMarked size={16} /></span>
+          <span className="shortcut-library-copy">
+            <strong>Biblioteca de comandos</strong>
+            <small>{shortcuts.length ? 'Executar, editar e duplicar' : 'Salve comandos para reutilizar'}</small>
+          </span>
+          <ChevronRight size={14} />
+        </button>
+        {quickShortcuts.map((shortcut) => (
+          <button type="button" className={`sidebar-shortcut ${shortcut.pinned ? 'is-pinned' : ''}`} key={shortcut.id} onClick={() => onRunShortcut(shortcut)} title={`Executar ${shortcut.name}`}>
+            <span className="sidebar-shortcut-mark">{shortcut.parameters?.length ? '{{…}}' : '›_'}</span>
+            <span className="sidebar-shortcut-copy">
+              <strong>{shortcut.name}</strong>
+              <small>{shortcut.pinned ? 'fixado · ' : ''}{shortcut.parameters?.length ? `${shortcut.parameters.length} campo${shortcut.parameters.length === 1 ? '' : 's'}` : 'comando direto'}</small>
+            </span>
+            <Play size={12} />
+          </button>
+        ))}
 
         <div className="sidebar-section-heading">
           <span>Categorias</span>

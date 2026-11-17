@@ -1,4 +1,4 @@
-import { Boxes, ChevronDown, ChevronRight, Globe2, HelpCircle, Menu, Monitor, PanelRight, ShieldCheck } from 'lucide-react'
+import { BookMarked, Boxes, ChevronDown, ChevronRight, Globe2, HelpCircle, Menu, Monitor, PanelRight, ShieldCheck } from 'lucide-react'
 import TrackIcon from './TrackIcon.jsx'
 
 export default function TopBar({
@@ -7,6 +7,8 @@ export default function TopBar({
   activeCategory,
   engineMode,
   onOpenEngine,
+  shortcutCount = 0,
+  onOpenLibrary,
   onOpenWorld,
   onOpenHelp,
   onOpenSidebar,
@@ -66,6 +68,11 @@ export default function TopBar({
         <button type="button" className="topbar-button" onClick={onOpenWorld} aria-label="Abrir mundo simulado" title="Abrir mundo simulado">
           <Boxes size={15} />
           <span>Mundo</span>
+        </button>
+        <button type="button" className="topbar-button library-topbar-button" onClick={onOpenLibrary} aria-label="Abrir meus atalhos" title="Meus atalhos e comandos salvos">
+          <BookMarked size={15} />
+          <span>Atalhos</span>
+          {shortcutCount > 0 ? <strong className="topbar-count">{shortcutCount}</strong> : null}
         </button>
         <button type="button" className="icon-button" onClick={onOpenHelp} aria-label="Como funciona o laboratório" title="Como funciona">
           <HelpCircle size={17} />
