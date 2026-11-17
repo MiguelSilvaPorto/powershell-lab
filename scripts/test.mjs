@@ -11,6 +11,7 @@ import {
 import { WORLD_VERSION, createInitialWorld } from '../src/data/seed.js'
 import { executeLine, implementedCommands } from '../src/engine/simulator.js'
 import { analyzeLine, applySuggestion } from '../src/engine/suggestions.js'
+import { detectErrorLanguage, stripAnsi, translatePowerShellError } from '../src/engine/errorTranslator.js'
 
 let checks = 0
 const failures = []
@@ -208,6 +209,37 @@ for (const intent of CURATED_INTENTS) {
   const world = createInitialWorld()
   const executed = run(renderShortcutCommand(shortcut.command, { usuario: 'felipe.lima' }), world)
   assert(executed.ok && executed.effects.some((item) => item.type === 'ad:account'), 'Executar o atalho deveria desbloquear a conta no simulador.')
+}
+
+// Tradução de erros do PowerShell.
+{
+  const commandNotFound = translatePowerShellError(
+    "The term 'Get-ADDomain' is not recognized as a name of a cmdlet, function, script file, or executable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.",
+  )
+  assert(commandNotFound?.translation.includes("'Get-ADDomain'"), 'A tradução deveria preservar o nome do comando.')
+  assert(commandNotFound?.translation.includes('não é reconhecido'), 'O erro de comando não encontrado deveria ser traduzido.')
+  assert(commandNotFound?.original.startsWith('The term'), 'A mensagem original deveria ser preservada.')
+
+  const pathError = translatePowerShellError("Cannot find path 'C:\\Temp\\sumiu.txt' because it does not exist.")
+  assert(pathError?.translation.includes("'C:\\Temp\\sumiu.txt'"), 'A tradução deveria preservar o caminho.')
+
+  const accessError = translatePowerShellError("Access to the path 'C:\\Windows\\System32\\config' is denied.")
+  assert(accessError?.translation.includes('acesso') && accessError.category === 'permission', 'O erro de permissão deveria ser traduzido e categorizado.')
+
+  const parameterError = translatePowerShellError("A parameter cannot be found that matches parameter name 'Cor'.")
+  assert(parameterError?.translation.includes("'Cor'"), 'O erro de parâmetro deveria preservar o nome recebido.')
+
+  const ansiError = translatePowerShellError("\u001b[31mThe term 'Get-ADDomain' is not recognized as a name of a cmdlet, function, script file, or executable program.\u001b[0m")
+  assert(ansiError?.translation && !ansiError.translation.includes('\u001b'), 'A tradução deveria remover os códigos ANSI.')
+  assert(stripAnsi('\u001b[31mteste\u001b[0m') === 'teste', 'O stripAnsi deveria remover cores do terminal.')
+
+  const portuguese = translatePowerShellError('Não foi possível encontrar o caminho informado.')
+  assert(portuguese === null, 'Mensagens já em português não deveriam receber uma tradução duplicada.')
+  assert(detectErrorLanguage('The term is not recognized.') === 'en', 'O detector deveria reconhecer inglês.')
+  assert(detectErrorLanguage('O caminho não existe.') === 'pt', 'O detector deveria reconhecer português.')
+
+  const unknown = translatePowerShellError('Something completely unexpected happened in the provider.')
+  assert(unknown?.matched === false && unknown.translation === null, 'Mensagens em inglês sem regra deveriam ser marcadas como não traduzidas.')
 }
 
 if (failures.length) {

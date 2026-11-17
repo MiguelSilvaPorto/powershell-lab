@@ -19,6 +19,8 @@ O **simulador é o modo padrão**. Quando quiser, você pode ativar o modo **Meu
 - **Mundo simulado navegável** — domínio `lab.local`, pessoas, grupos, computadores, árvore de arquivos, compartilhamentos e unidades mapeadas.
 - **Biblioteca de atalhos** — salve comandos que funcionaram, fixe os mais usados na barra lateral, edite, crie variações por duplicação e transforme valores em campos `{{parâmetro}}`.
 - **Sugestões de valores** — em vez de decorar nomes, escolha um usuário do AD, processo, serviço ou grupo em uma lista lida do simulador ou do seu PC.
+- **Ajuda por comando** — o botão “?” de cada sugestão abre uma referência com resumo, risco, parâmetros e exemplos prontos para inserir no console.
+- **Erros bilíngues** — mensagens reais do PowerShell aparecem no original em inglês, com tradução para português e uma dica do que fazer.
 - **Persistência local** — progresso, mundo, histórico do simulador e atalhos ficam no navegador.
 - **Modo real opcional** — conecta o console ao PowerShell do computador, com consentimento, indicador permanente de execução real e sem desfazer automático.
 - **Aulas sempre seguras** — as tarefas das trilhas são validadas contra o simulador; o modo real é para explorar o seu próprio ambiente.
@@ -43,7 +45,7 @@ O projeto é escrito em **JavaScript puro + JSX** e roda direto no servidor de d
 ### Testes
 
 ```bash
-npm test     # 575 verificações das trilhas, simulador, intenções, atalhos e sugestões
+npm test     # 587 verificações das trilhas, simulador, intenções, atalhos e sugestões
 npm run build
 ```
 
@@ -128,6 +130,19 @@ Fluxo típico de um atalho como **Desbloquear usuário do AD**:
 Cada atalho guarda a última seleção, a contagem de execuções, a data do último uso e o estado **fixado**. Na biblioteca você pode **editar** (a versão sobe), **duplicar** para criar uma variação, **fixar/desafixar** e **excluir** com confirmação.
 
 No modo real, as listas são lidas do seu computador pelo PowerShell. Se o módulo do Active Directory (RSAT) não estiver instalado, a consulta mostra o erro e o campo continua editável para você digitar o valor manualmente. Os atalhos ficam apenas no `localStorage` deste navegador, em `pslab.shortcuts.v1`, e não são enviados para a nuvem.
+
+## Ajuda por comando e tradução de erros
+
+Cada sugestão que representa um cmdlet tem um botão **“?”**. Ele abre uma referência com:
+
+- resumo do comando e categoria;
+- nível de risco e tipo de saída;
+- aliases e parâmetros principais;
+- exemplos prontos, com **Copiar** e **Inserir no console**.
+
+Inserir um exemplo não executa nada: apenas coloca o texto no editor para revisão.
+
+No modo real, quando o PowerShell devolve um erro em inglês, o terminal preserva a mensagem original e mostra abaixo uma **tradução para português**, com uma dica do que verificar. A tradução é feita localmente, sem enviar caminhos, usuários ou mensagens do seu PC para serviços externos. Mensagens já em português não recebem tradução duplicada.
 
 ## Categorias
 
@@ -219,6 +234,7 @@ src/
     parser.js        pipelines, strings, parâmetros e scriptblocks
     simulator.js     executor simulado e efeitos visuais
     suggestions.js   intenções, completions, ghosts e próximos passos
+    errorTranslator.js tradução local de mensagens de erro do PowerShell
   App.jsx            estado da sessão, progresso, atalhos e integração
   styles.css         design system e layout responsivo
 server/

@@ -28,6 +28,7 @@ import {
   Workflow,
 } from 'lucide-react'
 import { categoryFor } from '../data/catalog.js'
+import ErrorTranslation from './ErrorTranslation.jsx'
 import { compactNumber, formatBytes, formatNumber, truncate } from '../utils/format.js'
 
 function isBoolColumn(column, value) {
@@ -222,6 +223,7 @@ function TerminalEntry({ entry, onReuse, onCopy, onInsert }) {
         {view === 'text' && result.meta?.text ? (
           <div className={`result-block text-block ${result.meta.typeName === 'HelpInfo' ? 'is-help' : ''} ${isRealEntry ? 'is-real' : ''} ${isRealEntry && !result.ok ? 'is-real-error' : ''}`}>
             <TextOutput text={result.meta.text} />
+            {isRealEntry && !result.ok ? <ErrorTranslation text={result.meta.text} /> : null}
             {objects.length ? (
               <div className="result-toolbar text-toolbar">
                 <span className="result-type">{result.meta.typeName}</span>
@@ -257,6 +259,7 @@ function TerminalEntry({ entry, onReuse, onCopy, onInsert }) {
                   <span>O comando encontrou um problema</span>
                 </div>
                 <p>{error.message}</p>
+                <ErrorTranslation text={error.message} compact />
                 {error.hint ? <p className="output-error-hint">{error.hint}</p> : null}
                 {error.suggestions?.length ? (
                   <div className="error-suggestions">

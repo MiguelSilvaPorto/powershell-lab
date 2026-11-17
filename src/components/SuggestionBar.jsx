@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CornerDownLeft,
+  HelpCircle,
   Play,
   Sparkles,
   TerminalSquare,
@@ -11,7 +12,7 @@ import {
   Quote,
   TriangleAlert,
 } from 'lucide-react'
-import { categoryFor } from '../data/catalog.js'
+import { categoryFor, findCommand } from '../data/catalog.js'
 import TrackIcon from './TrackIcon.jsx'
 
 const KIND_META = {
@@ -37,7 +38,7 @@ function headerFor(analysis) {
   return { title: 'Próximas alterações', hint: 'Adicione uma etapa ou teste uma variação' }
 }
 
-export default function SuggestionBar({ analysis, ghost, onApply, realMode = false }) {
+export default function SuggestionBar({ analysis, ghost, onApply, onExplain, realMode = false }) {
   const header = headerFor(analysis)
   const suggestions = analysis.suggestions ?? []
   return (
@@ -69,29 +70,46 @@ export default function SuggestionBar({ analysis, ghost, onApply, realMode = fal
           const category = categoryFor(suggestion.category)
           const showTitle = suggestion.kind === 'intent' && suggestion.title
           const risky = suggestion.risk === 'cuidado'
+          const firstToken = String(suggestion.insert ?? '').trim().split(/\s+/)[0]
+          const helpCommand = suggestion.commandName ?? findCommand(firstToken)?.name
           return (
-            <button
-              type="button"
-              className={`suggestion-card kind-${suggestion.kind}`}
+            <article
+              className={`suggestion-card kind-${suggestion.kind} ${helpCommand ? 'has-help' : ''}`}
               key={suggestion.id ?? `${suggestion.kind}-${index}`}
-              onClick={() => onApply(suggestion)}
               style={{ '--cat': category.color, '--delay': `${index * 28}ms` }}
-              title={suggestion.insert}
             >
-              <span className="suggestion-card-top">
-                <span className="suggestion-kind-icon"><Icon size={13} /></span>
-                <span className="suggestion-badge">{suggestion.badge ?? kind.label}</span>
-                {suggestion.required ? <span className="suggestion-required">obrigatório</span> : null}
-                <span className="suggestion-card-category" aria-hidden="true"><TrackIcon category={category} size={13} /></span>
-              </span>
-              {showTitle ? <span className="suggestion-card-title">{suggestion.title}</span> : null}
-              <span className="suggestion-card-label">{suggestion.label}</span>
-              <span className="suggestion-card-desc">{suggestion.description}</span>
-              <span className="suggestion-card-cta">
-                {risky ? <TriangleAlert size={11} /> : <ArrowRight size={11} />}
-                {suggestion.kind === 'intent' ? 'usar este comando' : suggestion.kind === 'param' ? 'adicionar' : suggestion.kind === 'verify' ? 'verificar' : 'inserir'}
-              </span>
-            </button>
+              <button
+                type="button"
+                className="suggestion-card-main"
+                onClick={() => onApply(suggestion)}
+                title={suggestion.insert}
+              >
+                <span className="suggestion-card-top">
+                  <span className="suggestion-kind-icon"><Icon size={13} /></span>
+                  <span className="suggestion-badge">{suggestion.badge ?? kind.label}</span>
+                  {suggestion.required ? <span className="suggestion-required">obrigatório</span> : null}
+                  <span className="suggestion-card-category" aria-hidden="true"><TrackIcon category={category} size={13} /></span>
+                </span>
+                {showTitle ? <span className="suggestion-card-title">{suggestion.title}</span> : null}
+                <span className="suggestion-card-label">{suggestion.label}</span>
+                <span className="suggestion-card-desc">{suggestion.description}</span>
+                <span className="suggestion-card-cta">
+                  {risky ? <TriangleAlert size={11} /> : <ArrowRight size={11} />}
+                  {suggestion.kind === 'intent' ? 'usar este comando' : suggestion.kind === 'param' ? 'adicionar' : suggestion.kind === 'verify' ? 'verificar' : 'inserir'}
+                </span>
+              </button>
+              {helpCommand ? (
+                <button
+                  type="button"
+                  className="suggestion-card-help"
+                  onClick={() => onExplain?.(helpCommand)}
+                  title={`Explicar ${helpCommand} e ver exemplos`}
+                  aria-label={`Explicar ${helpCommand} e ver exemplos`}
+                >
+                  <HelpCircle size={12} />
+                </button>
+              ) : null}
+            </article>
           )
         })}
         {suggestions.length === 0 ? (

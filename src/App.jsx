@@ -37,6 +37,7 @@ import ConfirmDialog from './components/ConfirmDialog.jsx'
 import ToastStack from './components/ToastStack.jsx'
 import EngineModal from './components/EngineModal.jsx'
 import CommandLibraryModal from './components/CommandLibraryModal.jsx'
+import CommandHelpModal from './components/CommandHelpModal.jsx'
 import ShortcutEditorModal from './components/ShortcutEditorModal.jsx'
 import ShortcutRunModal from './components/ShortcutRunModal.jsx'
 
@@ -141,6 +142,7 @@ export default function App() {
   const [lessonOpen, setLessonOpen] = useState(false)
   const [worldOpen, setWorldOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [commandHelp, setCommandHelp] = useState(null)
   const [confirmState, setConfirmState] = useState(null)
   const [toasts, setToasts] = useState([])
   const editorRef = useRef(null)
@@ -575,6 +577,11 @@ export default function App() {
     focusEditor()
   }
 
+  function openCommandHelp(commandName) {
+    const command = typeof commandName === 'string' ? findCommand(commandName) : commandName
+    if (command) setCommandHelp(command)
+  }
+
   function openActiveLesson() {
     if (activeLesson) setLessonOpen(true)
     else browseLessons()
@@ -948,7 +955,7 @@ export default function App() {
               </span>
             </div>
 
-            <SuggestionBar analysis={effectiveAnalysis} ghost={ghostForInput} onApply={handleApplySuggestion} realMode={isReal} />
+            <SuggestionBar analysis={effectiveAnalysis} ghost={ghostForInput} onApply={handleApplySuggestion} onExplain={openCommandHelp} realMode={isReal} />
           </section>
 
           <Terminal
@@ -1098,6 +1105,17 @@ export default function App() {
             setEngineMode('sim')
             setActiveLessonId('inicio-primeiro')
             setLessonOpen(true)
+          }}
+        />
+      ) : null}
+
+      {commandHelp ? (
+        <CommandHelpModal
+          command={commandHelp}
+          onClose={() => setCommandHelp(null)}
+          onInsert={(example) => {
+            setCommandHelp(null)
+            insertIntoEditor(example)
           }}
         />
       ) : null}
