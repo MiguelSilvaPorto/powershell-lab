@@ -4,6 +4,8 @@ Um laboratório interativo para aprender PowerShell **vendo cada comando virar u
 
 O PS Lab combina um console com sugestões em tempo real, um grafo no estilo N8N que mostra origem → etapas → destino, um mundo simulado com Active Directory e um mapa visual do impacto antes de qualquer alteração.
 
+O **simulador é o modo padrão**. Quando quiser, você pode ativar o modo **Meu PC** e executar comandos de verdade em um PowerShell local — com confirmação explícita e aviso de risco.
+
 ![PS Lab mostrando a intenção "get add user" virando um fluxo de criação de usuário no Active Directory](docs/pslab-overview.png)
 
 ## O que já funciona
@@ -15,8 +17,9 @@ O PS Lab combina um console com sugestões em tempo real, um grafo no estilo N8N
 - **Impacto antes/depois** — cartões visuais para criação de usuários no AD, mapeamento de unidades, mudanças no registro, serviços, tarefas, arquivos e mais.
 - **29 trilhas guiadas em 17 categorias** — 111 tarefas validadas por padrão de comando e, quando necessário, pelo estado real do mundo simulado.
 - **Mundo simulado navegável** — domínio `lab.local`, pessoas, grupos, computadores, árvore de arquivos, compartilhamentos e unidades mapeadas.
-- **Persistência local** — progresso, mundo e histórico ficam no navegador; nada vai para um servidor.
-- **Sem execução real** — todos os comandos rodam em um simulador JavaScript. Nenhum arquivo, conta ou serviço do seu computador é alterado.
+- **Persistência local** — progresso, mundo e histórico do simulador ficam no navegador.
+- **Modo real opcional** — conecta o console ao PowerShell do computador, com consentimento, indicador permanente de execução real e sem desfazer automático.
+- **Aulas sempre seguras** — as tarefas das trilhas são validadas contra o simulador; o modo real é para explorar o seu próprio ambiente.
 
 ![Explorador do mundo simulado na aba de rede, com mapeamento A → B](docs/pslab-world.png)
 
@@ -33,6 +36,8 @@ Abra `http://localhost:5173`.
 
 O projeto é escrito em **JavaScript puro + JSX** e roda direto no servidor de desenvolvimento do Vite, com atualização instantânea (HMR). Não existe etapa manual de compilação para testar. O `npm run build` é opcional, apenas para gerar uma versão de produção.
 
+> O modo real depende desse servidor local (`npm run dev`) e fica disponível apenas para conexões loopback. Ele não existe no `vite preview` estático.
+
 ### Testes
 
 ```bash
@@ -45,6 +50,44 @@ Ou os dois de uma vez:
 ```bash
 npm run check
 ```
+
+## Modo real: Meu PC
+
+![Modo real executando New-Item no PowerShell local e mostrando a saída real](docs/pslab-real-mode.png)
+
+O laboratório começa no **Simulador**. Para executar de verdade:
+
+1. Clique no seletor **Simulador** no topo.
+2. Escolha **Meu PC**.
+3. Marque a confirmação e clique em **Ativar modo real**.
+
+A partir daí, o console usa uma sessão persistente do PowerShell da máquina:
+
+- variáveis e diretório atual sobrevivem entre comandos;
+- a saída, erros e `exit code` são reais;
+- o terminal marca execuções com `REAL` e o topo fica permanentemente em alerta;
+- o painel de fluxo mostra o **plano estrutural** do comando, sem inventar um impacto simulado;
+- as trilhas continuam disponíveis, mas as tarefas não são validadas nesse modo;
+- a sessão começa na sua pasta pessoal, usa `-NoProfile`, roda com o seu usuário e não eleva privilégios automaticamente.
+
+**Isto não é um sandbox.** Os comandos rodam com as permissões do seu usuário e podem criar, alterar ou apagar arquivos, processos e configurações. Use `-WhatIf` quando o cmdlet suportar e não cole comandos de fontes desconhecidas. O modo real não é salvo: recarregar a página volta ao simulador.
+
+### Instalar o PowerShell
+
+O modo real é detectado automaticamente em:
+
+1. `PSLAB_PWSH` (caminho explícito);
+2. `.tools/pwsh/pwsh` dentro do projeto;
+3. `pwsh` no `PATH` (ou `powershell.exe` no Windows, como fallback).
+
+Neste workspace, o PowerShell 7.7.0 foi instalado em `.tools/pwsh` apenas para uso local e está no `.gitignore`. Em outra máquina, instale o **PowerShell 7** pelo instalador oficial (ou `winget install Microsoft.PowerShell` no Windows) e reinicie o `npm run dev`. O modal de modo mostra o caminho detectado e oferece **Verificar novamente**.
+
+O servidor local de execução:
+
+- aceita apenas conexões de loopback;
+- exige um cabeçalho próprio e a mesma origem;
+- mantém no máximo três sessões, com timeout de 30 s por comando;
+- limita o tamanho da saída e não persiste comandos em log.
 
 ## Categorias
 
@@ -137,16 +180,22 @@ src/
     suggestions.js   intenções, completions, ghosts e próximos passos
   App.jsx            estado da sessão, progresso e integração
   styles.css         design system e layout responsivo
+server/
+  bridge.ps1        loop persistente que executa comandos no pwsh real
+  realPowerShell.mjs serviço de sessões, timeout e proteção local
+  viteRealPowerShellPlugin.mjs endpoints /api/pwsh/* do Vite
 scripts/test.mjs     suíte de verificação sem compilação
 docs/                capturas usadas neste README
 ```
 
 ## Limites e próximos passos
 
-- A execução é **simulada e intencionalmente segura**. Ainda não há integração com um `pwsh` local.
-- O catálogo cobre 124 cmdlets; novos módulos podem ser adicionados em `src/data/catalog.js` e no simulador.
-- O mundo e o progresso ficam no `localStorage`; limpar os dados do site reinicia o laboratório.
-- Roadmap natural: runner local opcional com PowerShell real e confirmação, mais objetos de AD, auditoria de eventos, certificados, jobs e Microsoft Graph.
+- O **simulador** cobre o catálogo de 124 cmdlets e as 29 trilhas. Ele não executa efeitos reais.
+- O **modo real** executa comandos no seu usuário, mas não é um sandbox, não tem desfazer automático e não é persistido entre recarregamentos. Comandos interativos podem atingir o timeout de 30 s.
+- O modo real foi pensado para `npm run dev` local; não há backend de execução no build estático.
+- O catálogo e o mundo simulado cobrem o essencial; novos módulos podem ser adicionados em `src/data/catalog.js` e no simulador.
+- O mundo, progresso e histórico do simulador ficam no `localStorage`; limpar os dados do site reinicia o laboratório.
+- Roadmap natural: execução real no Windows com módulos RSAT/AD, auditoria de comandos, confirmação por comando destrutivo, mais objetos de AD, eventos, certificados e Microsoft Graph.
 
 ## Repositório
 
