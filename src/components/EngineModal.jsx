@@ -86,8 +86,17 @@ export default function EngineModal({
             <div className="engine-health unavailable">
               <AlertTriangle size={13} />
               <div>
-                <strong>PowerShell não encontrado</strong>
-                <span>Instale o PowerShell 7 ou coloque o binário em <code>.tools/pwsh/pwsh</code>. Você também pode definir <code>PSLAB_PWSH</code>.</span>
+                {health?.reason === 'server_unavailable' ? (
+                  <>
+                    <strong>Servidor local indisponível</strong>
+                    <span>O modo real precisa do servidor do projeto. Abra o laboratório com <code>npm run dev</code> e verifique novamente.</span>
+                  </>
+                ) : (
+                  <>
+                    <strong>PowerShell não encontrado</strong>
+                    <span>Instale o PowerShell 7 ou coloque o binário em <code>.tools/pwsh/pwsh</code>. Você também pode definir <code>PSLAB_PWSH</code> e reiniciar o servidor.</span>
+                  </>
+                )}
               </div>
               <button type="button" className="mini-button" onClick={onRefreshHealth}><RefreshCw size={12} /> Verificar</button>
             </div>
