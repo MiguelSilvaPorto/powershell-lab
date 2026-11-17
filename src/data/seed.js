@@ -125,7 +125,7 @@ export function createInitialWorld() {
     psVersion: '7.4.6',
     domain: 'lab.local',
     cwd: 'C:\\Users\\miguel',
-    filesystem: drives,
+    filesystem: typeof structuredClone === 'function' ? structuredClone(drives) : JSON.parse(JSON.stringify(drives)),
     variables: {
       HOME: 'C:\\Users\\miguel',
       USERNAME: 'miguel',

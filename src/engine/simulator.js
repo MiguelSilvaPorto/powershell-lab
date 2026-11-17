@@ -1347,6 +1347,9 @@ function executePipeline(statement, world) {
       stage.error = normalized
       if (errorAction === 'silentlycontinue' || errorAction === 'ignore') {
         stage.suppressed = true
+        if (errorAction === 'silentlycontinue') {
+          world.errors = [normalized, ...(world.errors ?? [])].slice(0, 20)
+        }
         result.stages.push(stage)
         result.notes.push('Erro suprimido por -ErrorAction. O comando não exibiu a mensagem.')
         break
@@ -1724,22 +1727,35 @@ Object.assign(COMMAND_HANDLERS, {
     }
 
     const makeDirectory = itemType === 'directory' || itemType === 'dir' || (itemType === '' && /[\\/]$/.test(String(targetPath)))
-    let parent = resolved.parent
-    if (!parent) {
-      const force = flag(args, 'force')
-      if (!force) {
-        throw new ShellError(`A pasta pai de '${resolved.displayPath}' não existe.`, 'Crie o caminho com -Force ou use uma pasta existente.')
+    const force = flag(args, 'force')
+    const rootLetter = resolved.rootLetter ?? 'C'
+    const targetSegments = normalizeSegments(resolved.displayPath.replace(/^[A-Za-z]:/, ''))
+    if (!targetSegments.length) throw new ShellError('Não é possível criar a raiz de uma unidade.')
+    let cursor = getDriveRoot(world, rootLetter)
+    let walkedPath = `${rootLetter}:`
+    for (let index = 0; index < targetSegments.length - 1; index += 1) {
+      const segment = targetSegments[index]
+      let child = findChildByName(cursor, segment)
+      if (!child) {
+        if (!force) {
+          throw new ShellError(`A pasta pai de '${resolved.displayPath}' não existe.`, 'Crie os diretórios intermediários com -Force ou use uma pasta existente.')
+        }
+        child = { kind: 'dir', id: `dir-created-${Date.now()}-${index}`, name: segment, children: [], modified: formatDate() }
+        cursor.children.push(child)
       }
-      parent = ensureFsDirectories(world, resolved)
+      if (child.kind !== 'dir') throw new ShellError(`'${walkedPath}\\${segment}' não é uma pasta.`, 'Escolha outro caminho.')
+      cursor = child
+      walkedPath = `${walkedPath}\\${segment}`
     }
-    if (!parent) throw new ShellError('Não foi possível localizar a pasta pai.')
+    const parent = cursor
+    const targetName = targetSegments[targetSegments.length - 1]
 
     const node = makeDirectory
-      ? { kind: 'dir', id: `dir-user-${Date.now()}`, name: resolved.name, children: [], modified: formatDate() }
+      ? { kind: 'dir', id: `dir-user-${Date.now()}`, name: targetName, children: [], modified: formatDate() }
       : {
         kind: 'file',
         id: `file-user-${Date.now()}`,
-        name: resolved.name,
+        name: targetName,
         content: Array.isArray(value) ? value.join('\n') : String(value ?? ''),
         size: new TextEncoder().encode(Array.isArray(value) ? value.join('\n') : String(value ?? '')).length,
         modified: formatDate(),
@@ -1747,7 +1763,7 @@ Object.assign(COMMAND_HANDLERS, {
     parent.children.push(node)
     parent.modified = formatDate()
 
-    const newResolved = { ...resolved, exists: true, node }
+    const newResolved = { ...resolved, exists: true, node, name: targetName, segments: targetSegments }
     return {
       objects: [fileInfoNode(world, newResolved, node)],
       meta: tableMeta([
@@ -1767,7 +1783,7 @@ Object.assign(COMMAND_HANDLERS, {
 
   'Remove-Item': ({ args, world }) => {
     const target = arg(args, ['Path'], 0)
-    if (!target) throw new ShellError('Remove-Item precisa de um caminho.', 'Exemplo: Remove-Item .\\arquivo-antigo.txt')
+    if (!target) throw new ShellError('Remove-Item precisa de um caminho.', 'Exemplo: Remove-Item .\\Downloads\\planilha-clientes.csv -WhatIf')
     const whatIf = flag(args, 'whatif')
     const registryLooking = /^(hk(lm|cu)|hkey_)/i.test(String(target))
     if (registryLooking) {
