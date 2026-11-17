@@ -1,7 +1,19 @@
-import { Boxes, ChevronRight, Globe2, HelpCircle, Menu, PanelRight, ShieldCheck } from 'lucide-react'
+import { Boxes, ChevronDown, ChevronRight, Globe2, HelpCircle, Menu, Monitor, PanelRight, ShieldCheck } from 'lucide-react'
 import TrackIcon from './TrackIcon.jsx'
 
-export default function TopBar({ world, activeLesson, activeCategory, onOpenWorld, onOpenHelp, onOpenSidebar, onOpenFlow, onOpenCategoryPicker }) {
+export default function TopBar({
+  world,
+  activeLesson,
+  activeCategory,
+  engineMode,
+  onOpenEngine,
+  onOpenWorld,
+  onOpenHelp,
+  onOpenSidebar,
+  onOpenFlow,
+  onOpenCategoryPicker,
+}) {
+  const real = engineMode === 'real'
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -39,11 +51,18 @@ export default function TopBar({ world, activeLesson, activeCategory, onOpenWorl
       </div>
 
       <div className="topbar-right">
-        <div className="engine-pill" title="Todos os comandos são executados em um mundo simulado neste navegador.">
-          <ShieldCheck size={14} />
-          <span className="engine-pill-copy">Simulador seguro</span>
-          <span className="engine-light" />
-        </div>
+        <button
+          type="button"
+          className={`engine-pill ${real ? 'is-real' : ''}`}
+          onClick={onOpenEngine}
+          title={real ? 'Executando no seu PC. Clique para trocar o modo.' : 'Simulador seguro. Clique para executar no seu PC.'}
+          aria-label={real ? 'Modo real ativo. Abrir opções de execução.' : 'Modo simulador. Abrir opções de execução.'}
+        >
+          {real ? <Monitor size={14} /> : <ShieldCheck size={14} />}
+          <span className="engine-pill-copy">{real ? 'Meu PC · real' : 'Simulador'}</span>
+          <span className={`engine-light ${real ? 'is-real' : ''}`} />
+          <ChevronDown size={11} className="engine-pill-caret" />
+        </button>
         <button type="button" className="topbar-button" onClick={onOpenWorld} aria-label="Abrir mundo simulado" title="Abrir mundo simulado">
           <Boxes size={15} />
           <span>Mundo</span>

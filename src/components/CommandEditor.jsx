@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, forwardRef } from 'react'
-import { EditorState, StateEffect, StateField, Prec } from '@codemirror/state'
+import { EditorState, StateEffect, StateField, Prec, Compartment } from '@codemirror/state'
 import { EditorView, keymap, placeholder, drawSelection, Decoration, ViewPlugin, WidgetType } from '@codemirror/view'
 import { defaultKeymap, insertTab } from '@codemirror/commands'
 import { powershellLanguage, powershellHighlighting } from '../editor/powershellLanguage.js'
@@ -128,6 +128,7 @@ const CommandEditor = forwardRef(function CommandEditor(
 ) {
   const hostRef = useRef(null)
   const viewRef = useRef(null)
+  const placeholderCompartment = useRef(new Compartment())
   const callbacks = useRef({ onChange, onRun, onHistory, onGhostAccept, canAcceptGhost })
   const syncing = useRef(false)
 
@@ -141,7 +142,7 @@ const CommandEditor = forwardRef(function CommandEditor(
       drawSelection(),
       EditorView.lineWrapping,
       EditorState.tabSize.of(2),
-      placeholder(placeholderText),
+      placeholderCompartment.current.of(placeholder(placeholderText)),
       ghostField,
       ghostPlugin,
       Prec.highest(
@@ -247,6 +248,12 @@ const CommandEditor = forwardRef(function CommandEditor(
     if (!view) return
     view.dispatch({ effects: setGhost.of(ghost ?? '') })
   }, [ghost])
+
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    view.dispatch({ effects: placeholderCompartment.current.reconfigure(placeholder(placeholderText)) })
+  }, [placeholderText])
 
   useImperativeHandle(ref, () => ({
     focus() {

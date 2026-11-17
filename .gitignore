@@ -4,3 +4,5 @@ dist/
 *.local
 .pslab-sandbox/
 .vscode/
+.tools/
+.pslab-runtime/

@@ -12,9 +12,13 @@ import {
   Folder,
   Info,
   KeyRound,
+  LoaderCircle,
+  Monitor,
   Network,
   Package,
   Play,
+  RotateCcw,
+  ShieldCheck,
   Sparkles,
   TerminalSquare,
   Trash2,
@@ -157,6 +161,7 @@ function TerminalEntry({ entry, onReuse, onCopy, onInsert }) {
   const view = result.meta?.view ?? 'none'
   const objects = result.objects ?? []
   const effectCount = result.effects?.length ?? 0
+  const isRealEntry = Boolean(result.real)
   const status = !result.ok ? 'error' : effectCount ? 'changed' : 'ok'
   const hasStructured = objects.length > 0 && view !== 'text'
   const notes = [...(result.notes ?? [])]
@@ -166,6 +171,7 @@ function TerminalEntry({ entry, onReuse, onCopy, onInsert }) {
     <article className="terminal-entry">
       <div className="entry-command">
         <span className="entry-prompt">❯</span>
+        <span className={`entry-env ${isRealEntry ? 'is-real' : ''}`}>{isRealEntry ? 'REAL' : 'SIM'}</span>
         <code>{entry.command}</code>
         <span className={`entry-status is-${status}`}>
           {status === 'error' ? 'erro' : status === 'changed' ? `${effectCount} ${effectCount === 1 ? 'alteração' : 'alterações'}` : 'ok'}
@@ -214,7 +220,7 @@ function TerminalEntry({ entry, onReuse, onCopy, onInsert }) {
         ) : null}
 
         {view === 'text' && result.meta?.text ? (
-          <div className={`result-block text-block ${result.meta.typeName === 'HelpInfo' ? 'is-help' : ''}`}>
+          <div className={`result-block text-block ${result.meta.typeName === 'HelpInfo' ? 'is-help' : ''} ${isRealEntry ? 'is-real' : ''} ${isRealEntry && !result.ok ? 'is-real-error' : ''}`}>
             <TextOutput text={result.meta.text} />
             {objects.length ? (
               <div className="result-toolbar text-toolbar">
@@ -268,7 +274,7 @@ function TerminalEntry({ entry, onReuse, onCopy, onInsert }) {
           <div className="output-notes">
             {notes.map((note, index) => (
               <div className="output-note" key={index}>
-                <CheckCircle2 size={13} />
+                {isRealEntry && !result.ok ? <CircleAlert size={13} /> : <CheckCircle2 size={13} />}
                 <span>{note}</span>
               </div>
             ))}
@@ -283,7 +289,56 @@ function TerminalEntry({ entry, onReuse, onCopy, onInsert }) {
   )
 }
 
-function DemoFlow({ onInsert }) {
+function DemoFlow({ onInsert, realMode = false, realCwd = '', realVersion = '' }) {
+  if (realMode) {
+    return (
+      <div className="terminal-empty real-empty">
+        <div className="empty-visual real-empty-visual">
+          <span className="real-empty-icon"><Monitor size={22} /></span>
+          <div className="real-empty-copy">
+            <span className="empty-visual-label">CONECTADO AO SEU PC</span>
+            <strong>PowerShell real{realVersion ? ` ${realVersion}` : ''}</strong>
+            <code>{realCwd || 'localização atual'}</code>
+          </div>
+          <span className="real-empty-pulse" />
+        </div>
+        <div className="empty-copy">
+          <div className="empty-kicker"><AlertTriangleIcon /> Modo real ativo</div>
+          <h3>O console é seu.</h3>
+          <p>
+            Os comandos agora rodam no PowerShell do seu computador. A saída é real e as mudanças
+            também. Revise o comando antes de apertar Enter.
+          </p>
+        </div>
+        <div className="empty-actions">
+          <button type="button" className="empty-command" onClick={() => onInsert('Get-Process')}>
+            <Cpu size={14} />
+            <span>Get-Process</span>
+            <small>processos reais</small>
+          </button>
+          <button type="button" className="empty-command" onClick={() => onInsert('Get-Location')}>
+            <Folder size={14} />
+            <span>Get-Location</span>
+            <small>onde estou</small>
+          </button>
+          <button type="button" className="empty-command" onClick={() => onInsert('$PSVersionTable')}>
+            <TerminalSquare size={14} />
+            <span>$PSVersionTable</span>
+            <small>versão real</small>
+          </button>
+          <button type="button" className="empty-command" onClick={() => onInsert('Get-ChildItem')}>
+            <File size={14} />
+            <span>Get-ChildItem</span>
+            <small>arquivos reais</small>
+          </button>
+        </div>
+        <div className="empty-footnote">
+          <Monitor size={12} />
+          Sessão persistente no seu PC. Use <code>Clear-Host</code> para limpar e alterne para o simulador quando quiser.
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="terminal-empty">
       <div className="empty-visual" aria-hidden="true">
@@ -346,7 +401,11 @@ function DemoFlow({ onInsert }) {
   )
 }
 
-export default function Terminal({ entries, onReuse, onCopy, onInsert, onClear }) {
+function AlertTriangleIcon() {
+  return <TriangleAlert size={13} />
+}
+
+export default function Terminal({ entries, realMode = false, realVersion = '', realCwd = '', busy = false, onResetReal, onReuse, onCopy, onInsert, onClear }) {
   const scrollRef = useRef(null)
 
   useEffect(() => {
@@ -368,9 +427,20 @@ export default function Terminal({ entries, onReuse, onCopy, onInsert, onClear }
           <span className="terminal-head-icon"><TerminalSquare size={15} /></span>
           <span>Saída</span>
           {entries.length ? <span className="terminal-counter">{entries.length}</span> : null}
+          <span className={`terminal-env-chip ${realMode ? 'is-real' : ''}`}>
+            {realMode ? <><Monitor size={10} /> REAL</> : <><ShieldCheck size={10} /> SIM</>}
+          </span>
         </div>
         <div className="terminal-head-actions">
-          <span className="terminal-live"><span className="live-dot" /> simulação local</span>
+          <span className={`terminal-live ${realMode ? 'is-real' : ''} ${busy ? 'is-busy' : ''}`}>
+            {busy ? <LoaderCircle size={11} className="spin" /> : <span className={`live-dot ${realMode ? 'is-real' : ''}`} />}
+            {busy ? 'executando…' : realMode ? 'execução real' : 'simulação local'}
+          </span>
+          {realMode ? (
+            <button type="button" className="mini-button" onClick={onResetReal} disabled={busy} title="Reiniciar a sessão real do PowerShell">
+              <RotateCcw size={12} /> Nova sessão
+            </button>
+          ) : null}
           <button type="button" className="mini-button" onClick={onClear} disabled={!entries.length}>
             <Trash2 size={13} />
             Limpar
@@ -379,7 +449,7 @@ export default function Terminal({ entries, onReuse, onCopy, onInsert, onClear }
       </header>
       <div className="terminal-scroll" ref={scrollRef}>
         {!entries.length ? (
-          <DemoFlow onInsert={onInsert} />
+          <DemoFlow onInsert={onInsert} realMode={realMode} realCwd={realCwd} realVersion={realVersion} />
         ) : (
           <div className="terminal-entries">
             {entries.map((entry) => (

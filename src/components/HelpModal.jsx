@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Braces, CornerDownLeft, Lightbulb, Sparkles, Workflow } from 'lucide-react'
+import { ArrowRight, BookOpen, Braces, CornerDownLeft, Lightbulb, Sparkles, TriangleAlert, Workflow } from 'lucide-react'
 import Modal from './Modal.jsx'
 
 const steps = [
@@ -30,8 +30,9 @@ export default function HelpModal({ onClose, onStartAd, onStartFirst }) {
       <div className="modal-kicker"><Sparkles size={13} /> Como funciona</div>
       <h2 id="help-title">Um console que mostra o caminho.</h2>
       <p className="modal-lead">
-        O PS Lab é um laboratório local: nada do que você digita altera o seu Windows de verdade.
-        O objetivo é aprender o raciocínio do PowerShell, não memorizar comandos.
+        O PS Lab abre em um laboratório local seguro: por padrão, nada do que você digita altera o seu
+        computador. O objetivo é aprender o raciocínio do PowerShell, não memorizar comandos. O modo
+        <strong> Meu PC</strong> é opcional e executa comandos reais quando você o ativa com confirmação.
       </p>
 
       <div className="help-steps">
@@ -69,7 +70,11 @@ export default function HelpModal({ onClose, onStartAd, onStartFirst }) {
       </div>
       <div className="help-tip">
         <Lightbulb size={14} />
-        Use o bloco <strong>Mundo</strong> no topo para ver o domínio, os arquivos e a rede simulados a qualquer momento.
+        Use o bloco <strong>Mundo</strong> no topo para ver o domínio, os arquivos e a rede simulados. Para executar de verdade, clique em <strong>Simulador</strong> no topo e ative o modo <strong>Meu PC</strong>.
+      </div>
+      <div className="help-tip help-real-tip">
+        <TriangleAlert size={14} />
+        O modo real usa as suas permissões e pode alterar arquivos, configurações e processos. Ele não é salvo entre recarregamentos e as tarefas das trilhas continuam validadas apenas no simulador.
       </div>
     </Modal>
   )

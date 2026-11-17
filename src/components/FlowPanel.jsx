@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   Activity,
+  AlertTriangle,
   ArrowRight,
   BookOpen,
   CheckCircle2,
@@ -12,6 +13,7 @@ import {
   FolderTree,
   Info,
   Layers,
+  Monitor,
   Network,
   Play,
   ShieldCheck,
@@ -114,6 +116,34 @@ function FlowEdge({ label, tone = 'var(--accent)', dashed = false, muted = false
   )
 }
 
+function RealSourceNode({ realCwd, realVersion }) {
+  return (
+    <div className="flow-node flow-source flow-source-real" style={{ '--cat': 'var(--amber)' }}>
+      <span className="flow-node-icon"><Monitor size={15} /></span>
+      <div className="flow-node-main">
+        <span className="flow-node-kicker">ORIGEM · SEU COMPUTADOR</span>
+        <strong className="flow-node-title">PowerShell real{realVersion ? ` ${realVersion}` : ''}</strong>
+        <span className="flow-node-sub">{truncate(realCwd || 'localização real do processo', 64)}</span>
+      </div>
+      <span className="flow-node-side-badge is-real">meu PC</span>
+    </div>
+  )
+}
+
+function RealOutcomeNode() {
+  return (
+    <div className="flow-node flow-outcome flow-outcome-real">
+      <span className="flow-node-icon"><TerminalSquare size={15} /></span>
+      <div className="flow-node-main">
+        <span className="flow-node-kicker">DESTINO · EXECUÇÃO REAL</span>
+        <strong className="flow-node-title">A saída aparece no console</strong>
+        <span className="flow-node-sub">Tabelas, erros e retorno vêm diretamente do seu PowerShell.</span>
+      </div>
+      <span className="flow-node-count is-real">real</span>
+    </div>
+  )
+}
+
 function FlowSourceNode({ categoryId, world }) {
   const category = categoryFor(categoryId)
   const source = sourceDescription(categoryId, world)
@@ -130,20 +160,22 @@ function FlowSourceNode({ categoryId, world }) {
   )
 }
 
-function FlowStageNode({ stage, index, suggested = false, draft = false }) {
+function FlowStageNode({ stage, index, suggested = false, draft = false, realMode = false }) {
   const command = findCommand(stage?.commandName ?? stage?.cmdlet)
   const category = categoryFor(command?.cat ?? stage?.category)
   const { chips, more } = stageChips(stage)
-  const error = stage?.error
+  const error = realMode ? null : stage?.error
   const outputCount = stage?.outputCount
   const stageEffects = stage?.effects?.length ?? 0
-  const badge = error
-    ? 'erro'
-    : outputCount === undefined || outputCount === null
-      ? 'em edição'
-      : outputCount === 0
-        ? stageEffects ? `${stageEffects} ${stageEffects === 1 ? 'impacto' : 'impactos'}` : 'sem saída'
-        : `${outputCount} ${outputCount === 1 ? 'item' : 'itens'}`
+  const badge = realMode
+    ? 'plano'
+    : error
+      ? 'erro'
+      : outputCount === undefined || outputCount === null
+        ? 'em edição'
+        : outputCount === 0
+          ? stageEffects ? `${stageEffects} ${stageEffects === 1 ? 'impacto' : 'impactos'}` : 'sem saída'
+          : `${outputCount} ${outputCount === 1 ? 'item' : 'itens'}`
   return (
     <div className={`flow-node flow-stage ${suggested ? 'is-suggested' : ''} ${draft ? 'is-draft' : ''} ${error ? 'has-error' : ''}`} style={{ '--cat': category.color }}>
       <span className="flow-stage-index">{String(index + 1).padStart(2, '0')}</span>
@@ -309,6 +341,9 @@ export default function FlowPanel({
   analysis,
   preview,
   executed = false,
+  realMode = false,
+  realCwd = '',
+  realVersion = '',
   intentPreview,
   world,
   isOpen,
@@ -326,9 +361,8 @@ export default function FlowPanel({
   const referenceCommand = analysis.command ?? (topIntent ? findCommand(topIntent.cmdlet) : null)
   const isDraft = ['cmdlet', 'params', 'value'].includes(analysis.kind)
   const category = referenceCommand ? categoryFor(referenceCommand.cat) : topIntent ? categoryFor(topIntent.category) : null
-  const risk = referenceCommand ? riskMeta(referenceCommand.risk) : null
-  const effects = effectivePreview?.effects ?? []
-  const rawErrors = effectivePreview?.errors ?? []
+  const effects = realMode ? [] : effectivePreview?.effects ?? []
+  const rawErrors = realMode ? [] : effectivePreview?.errors ?? []
   const errors = isDraft
     ? []
     : analysis.kind === 'pipeline'
@@ -337,6 +371,13 @@ export default function FlowPanel({
   const stages = effectivePreview?.stages ?? []
   const completeStages = stages.filter((stage) => stage.cmdlet || stage.commandName)
   const lastStage = completeStages[completeStages.length - 1]
+  const riskOrder = { leitura: 1, altera: 2, admin: 3, cuidado: 4 }
+  const pipelineCommands = [
+    ...completeStages.map((stage) => findCommand(stage.commandName ?? stage.cmdlet)).filter(Boolean),
+    ...(referenceCommand ? [referenceCommand] : []),
+  ]
+  const overallRisk = pipelineCommands.reduce((current, command) => (riskOrder[command.risk] ?? 1) > (riskOrder[current] ?? 1) ? command.risk : current, 'leitura')
+  const risk = pipelineCommands.length ? riskMeta(overallRisk) : null
   const outputTone = category?.color ?? 'var(--accent)'
   const draftSuggestion = analysis.suggestions?.find((suggestion) => ['cmdlet', 'param', 'value'].includes(suggestion.kind))
   const title = analysis.kind === 'empty'
@@ -349,7 +390,7 @@ export default function FlowPanel({
     : analysis.kind === 'natural'
       ? topIntent?.why ?? 'Encontrei uma intenção. Escolha o comando sugerido para ver o fluxo.'
       : referenceCommand?.summary ?? analysis.suggestions?.[0]?.description ?? 'Continue digitando para montar o fluxo.'
-  const modeLabel = executed ? (errors.length ? 'executado com erro' : 'executado agora') : KIND_LABEL[analysis.kind] ?? 'radiografia'
+  const modeLabel = realMode ? 'plano · meu PC' : executed ? (errors.length ? 'executado com erro' : 'executado agora') : KIND_LABEL[analysis.kind] ?? 'radiografia'
   const executedChip = executed ? (errors.length ? { label: 'falhou', error: true } : effects.length ? { label: 'aplicado ao mundo' } : { label: 'sem alterações', neutral: true }) : null
   const steps = analysis.kind === 'natural' ? [] : (analysis.nextSteps ?? []).slice(0, 3)
   const emptyIntents = (analysis.suggestions ?? []).filter((item) => item.kind === 'intent').slice(0, 3)
@@ -368,9 +409,20 @@ export default function FlowPanel({
       </header>
 
       <div className="flow-scroll">
+        {realMode ? (
+          <div className="real-mode-banner">
+            <AlertTriangle size={14} />
+            <div>
+              <strong>Modo real ativo</strong>
+              <span>Este console conversa com o PowerShell do seu computador em <code>{truncate(realCwd || 'localização atual', 42)}</code>. O grafo mostra o plano estrutural; o resultado real fica no terminal.</span>
+            </div>
+          </div>
+        ) : null}
+
         <section className="flow-title-block" style={{ '--cat': category?.color ?? 'var(--accent)' }}>
           <div className="flow-title-kicker">
             <span className="flow-mode"><span className="live-dot" /> {modeLabel}</span>
+            {realMode ? <span className="flow-executed-chip is-real">executa de verdade</span> : null}
             {executedChip ? <span className={`flow-executed-chip ${executedChip.error ? 'is-error' : executedChip.neutral ? 'is-neutral' : ''}`}>{executedChip.label}</span> : null}
             {topIntent?.confidence ? <span className="flow-confidence">confiança {topIntent.confidence}</span> : null}
             {risk ? <span className={`risk-pill tone-${risk.tone}`}>{risk.label}</span> : null}
@@ -391,7 +443,7 @@ export default function FlowPanel({
         <section className="flow-section">
           <header className="flow-section-head">
             <div><Workflow size={13} /><span>Fluxo do comando</span></div>
-            <span className="flow-section-hint">{analysis.kind === 'empty' ? 'mapa conceitual' : executed ? 'resultado real' : 'prévia ao vivo'}</span>
+            <span className="flow-section-hint">{realMode ? 'plano de execução' : analysis.kind === 'empty' ? 'mapa conceitual' : executed ? 'resultado real' : 'prévia ao vivo'}</span>
           </header>
 
           {analysis.kind === 'empty' ? (
@@ -402,12 +454,12 @@ export default function FlowPanel({
               <FlowEdge label="sugere" tone={category?.color ?? 'var(--violet)'} dashed active />
               {intentPreview?.stages?.filter((stage) => stage.cmdlet || stage.commandName).map((stage, index, list) => (
                 <div key={`${stage.cmdlet}-${index}`}>
-                  <FlowStageNode stage={stage} index={index} suggested />
-                  {index < list.length - 1 ? <FlowEdge label={stage.outputCount != null ? objectCountLabel(stage.outputCount) : 'segue'} tone={outputTone} /> : null}
+                  <FlowStageNode stage={stage} index={index} suggested realMode={realMode} />
+                  {index < list.length - 1 ? <FlowEdge label={realMode ? 'etapa' : stage.outputCount != null ? objectCountLabel(stage.outputCount) : 'segue'} tone={outputTone} /> : null}
                 </div>
               ))}
-              {intentPreview?.stages?.length ? <FlowEdge label={intentPreview.objects?.length ? objectCountLabel(intentPreview.objects.length) : effects.length ? 'impacto' : 'resultado'} tone={outputTone} /> : null}
-              <FlowOutcomeNode preview={intentPreview} suggested />
+              {intentPreview?.stages?.length ? <FlowEdge label={realMode ? 'execução real' : intentPreview.objects?.length ? objectCountLabel(intentPreview.objects.length) : effects.length ? 'impacto' : 'resultado'} tone={outputTone} /> : null}
+              {realMode ? <RealOutcomeNode /> : <FlowOutcomeNode preview={intentPreview} suggested />}
             </div>
           ) : analysis.kind === 'unknown' ? (
             <div className="flow-canvas">
@@ -431,14 +483,14 @@ export default function FlowPanel({
             </div>
           ) : analysis.kind === 'pipeline' ? (
             <div className="flow-canvas">
-              <FlowSourceNode categoryId={completeStages[0]?.category ?? referenceCommand?.cat ?? 'objetos'} world={world} />
+              {realMode ? <RealSourceNode realCwd={realCwd} realVersion={realVersion} /> : <FlowSourceNode categoryId={completeStages[0]?.category ?? referenceCommand?.cat ?? 'objetos'} world={world} />}
               {completeStages.map((stage, index) => (
                 <div key={`${stage.cmdlet}-${index}`}>
-                  <FlowEdge label={index === 0 ? 'entrada' : objectCountLabel(completeStages[index - 1]?.outputCount ?? 0)} tone={outputTone} active={index === 0} />
-                  <FlowStageNode stage={stage} index={index} />
+                  <FlowEdge label={realMode ? 'etapa' : index === 0 ? 'entrada' : objectCountLabel(completeStages[index - 1]?.outputCount ?? 0)} tone={outputTone} active={index === 0} />
+                  <FlowStageNode stage={stage} index={index} realMode={realMode} />
                 </div>
               ))}
-              <FlowEdge label={lastStage?.outputCount != null ? objectCountLabel(lastStage.outputCount) : 'segue'} tone={outputTone} dashed />
+              <FlowEdge label={realMode ? 'aguardando etapa' : lastStage?.outputCount != null ? objectCountLabel(lastStage.outputCount) : 'segue'} tone={outputTone} dashed />
               <button type="button" className="flow-next-stage" onClick={() => analysis.suggestions?.[0] && onApplySuggestion(analysis.suggestions[0])}>
                 <span className="flow-node-icon"><Play size={14} /></span>
                 <span>
@@ -450,7 +502,7 @@ export default function FlowPanel({
             </div>
           ) : isDraft ? (
             <div className="flow-canvas">
-              <FlowSourceNode categoryId={referenceCommand?.cat ?? 'objetos'} world={world} />
+              {realMode ? <RealSourceNode realCwd={realCwd} realVersion={realVersion} /> : <FlowSourceNode categoryId={referenceCommand?.cat ?? 'objetos'} world={world} />}
               <FlowEdge label="montando" tone={outputTone} dashed />
               <FlowStageNode
                 stage={{
@@ -462,27 +514,28 @@ export default function FlowPanel({
                 }}
                 index={0}
                 draft
+                realMode={realMode}
               />
               <FlowEdge label="aguardando" tone="var(--border-strong)" dashed active={false} />
-              <FlowOutcomeNode preview={null} draft suggested={Boolean(draftSuggestion)} />
+              {realMode ? <RealOutcomeNode /> : <FlowOutcomeNode preview={null} draft suggested={Boolean(draftSuggestion)} />}
               {draftSuggestion ? <DraftNextNode suggestion={draftSuggestion} /> : null}
             </div>
           ) : (
             <div className="flow-canvas">
-              <FlowSourceNode categoryId={completeStages[0]?.category ?? referenceCommand?.cat ?? 'objetos'} world={world} />
+              {realMode ? <RealSourceNode realCwd={realCwd} realVersion={realVersion} /> : <FlowSourceNode categoryId={completeStages[0]?.category ?? referenceCommand?.cat ?? 'objetos'} world={world} />}
               {completeStages.map((stage, index) => (
                 <div key={`${stage.cmdlet}-${index}`}>
-                  <FlowEdge label={index === 0 ? 'lê' : objectCountLabel(completeStages[index - 1]?.outputCount ?? 0)} tone={outputTone} active={index === 0} />
-                  <FlowStageNode stage={stage} index={index} />
+                  <FlowEdge label={realMode ? 'etapa' : index === 0 ? 'lê' : objectCountLabel(completeStages[index - 1]?.outputCount ?? 0)} tone={outputTone} active={index === 0} />
+                  <FlowStageNode stage={stage} index={index} realMode={realMode} />
                 </div>
               ))}
               <FlowEdge
-                label={errors.length ? 'interrompido' : effectivePreview?.objects?.length ? objectCountLabel(effectivePreview.objects.length) : effects.length ? 'impacto' : 'saída'}
-                tone={errors.length ? 'var(--danger)' : outputTone}
-                dashed={Boolean(errors.length)}
-                active={!errors.length}
+                label={realMode ? 'execução real' : errors.length ? 'interrompido' : effectivePreview?.objects?.length ? objectCountLabel(effectivePreview.objects.length) : effects.length ? 'impacto' : 'saída'}
+                tone={realMode ? 'var(--amber)' : errors.length ? 'var(--danger)' : outputTone}
+                dashed={realMode || Boolean(errors.length)}
+                active={!realMode && !errors.length}
               />
-              <FlowOutcomeNode preview={effectivePreview} />
+              {realMode ? <RealOutcomeNode /> : <FlowOutcomeNode preview={effectivePreview} />}
             </div>
           )}
         </section>
@@ -490,9 +543,17 @@ export default function FlowPanel({
         <section className="flow-section">
           <header className="flow-section-head">
             <div><ShieldCheck size={13} /><span>Impacto</span></div>
-            <span className="flow-section-hint">{effects.length ? `${effects.length} ${effects.length === 1 ? 'alteração' : 'alterações'} · ${executed ? 'aplicado' : 'prévia'}` : executed ? 'resultado da execução' : 'antes de executar'}</span>
+            <span className="flow-section-hint">{realMode ? 'sem simulação' : effects.length ? `${effects.length} ${effects.length === 1 ? 'alteração' : 'alterações'} · ${executed ? 'aplicado' : 'prévia'}` : executed ? 'resultado da execução' : 'antes de executar'}</span>
           </header>
-          {effects.length ? (
+          {realMode ? (
+            <div className="real-impact-note">
+              <AlertTriangle size={15} />
+              <div>
+                <strong>O impacto não é simulado.</strong>
+                <span>Comandos no modo real alteram o seu computador de verdade. Não há uma prévia confiável nem desfazer automático: confira a saída no terminal e use <code>-WhatIf</code> quando o comando suportar.</span>
+              </div>
+            </div>
+          ) : effects.length ? (
             <div className="effect-stack">
               {analysis.kind === 'natural' ? (
                 <div className="effect-preview-note"><Sparkles size={12} /> Se você usar a sugestão, o mundo simulado mudaria assim:</div>
@@ -587,6 +648,13 @@ export default function FlowPanel({
           ) : null}
         </section>
 
+        {realMode ? (
+          <div className="real-next-note">
+            <Monitor size={12} />
+            Sugestões continuam disponíveis, mas no modo real você é responsável por validar o resultado no seu ambiente.
+          </div>
+        ) : null}
+
         {referenceCommand ? (
           <section className="flow-reference">
             <button type="button" className="flow-reference-head" onClick={() => setReferenceOpen((value) => !value)} aria-expanded={referenceOpen}>
@@ -615,9 +683,9 @@ export default function FlowPanel({
           </section>
         ) : null}
 
-        <div className="flow-footnote">
-          <ShieldCheck size={13} />
-          <span>Simulação local. Nada aqui toca o seu Windows de verdade.</span>
+        <div className={`flow-footnote ${realMode ? 'is-real' : ''}`}>
+          {realMode ? <AlertTriangle size={13} /> : <ShieldCheck size={13} />}
+          <span>{realMode ? 'Modo real: os comandos são executados no seu computador.' : 'Simulação local. Nada aqui toca o seu Windows de verdade.'}</span>
         </div>
       </div>
     </aside>

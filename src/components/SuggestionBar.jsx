@@ -37,7 +37,7 @@ function headerFor(analysis) {
   return { title: 'Próximas alterações', hint: 'Adicione uma etapa ou teste uma variação' }
 }
 
-export default function SuggestionBar({ analysis, ghost, onApply }) {
+export default function SuggestionBar({ analysis, ghost, onApply, realMode = false }) {
   const header = headerFor(analysis)
   const suggestions = analysis.suggestions ?? []
   return (
@@ -46,7 +46,8 @@ export default function SuggestionBar({ analysis, ghost, onApply }) {
         <div className="suggestion-title">
           <Sparkles size={14} />
           <span>{header.title}</span>
-          <small>{header.hint}</small>
+          {realMode ? <span className="real-mode-chip">meu PC</span> : null}
+          <small>{realMode ? 'execução real · revise antes de rodar' : header.hint}</small>
         </div>
         {ghost ? (
           <div className="ghost-hint">

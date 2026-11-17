@@ -5,6 +5,8 @@ import {
   CornerDownLeft,
   Eraser,
   History,
+  LoaderCircle,
+  Monitor,
   Play,
   RotateCcw,
   Sparkles,
@@ -27,8 +29,10 @@ import WorldModal from './components/WorldModal.jsx'
 import HelpModal from './components/HelpModal.jsx'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import ToastStack from './components/ToastStack.jsx'
+import EngineModal from './components/EngineModal.jsx'
 
 const WORLD_KEY = 'pslab.world.v3'
+const API_HEADERS = { 'x-pslab-real': '1' }
 const ACTIVE_LESSON_KEY = 'pslab.activeLesson.v1'
 const COMPLETED_TASKS_KEY = 'pslab.completedTasks.v1'
 const HISTORY_KEY = 'pslab.history.v1'
@@ -86,6 +90,22 @@ function shortPath(path) {
   return `…\\${parts.slice(-1).join('\\')}`
 }
 
+function displayRealPath(path, home) {
+  const value = String(path ?? '')
+  if (!value) return '—'
+  if (home && value.startsWith(home)) return `~${value.slice(home.length)}` || '~'
+  return value
+}
+
+function newRealSessionId() {
+  const raw = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `real-${raw.replace(/[^A-Za-z0-9-]/g, '').slice(0, 60)}`
+}
+
+function newEntryId(sequenceRef) {
+  return `entry-${Date.now()}-${++sequenceRef.current}`
+}
+
 export default function App() {
   const [world, setWorld] = useState(loadWorld)
   const [input, setInput] = useState('')
@@ -95,6 +115,12 @@ export default function App() {
   const [activeLessonId, setActiveLessonId] = usePersistentState(ACTIVE_LESSON_KEY, null)
   const [completedTasks, setCompletedTasks] = usePersistentState(COMPLETED_TASKS_KEY, {})
   const [commandsRun, setCommandsRun] = usePersistentState(COMMANDS_RUN_KEY, 0)
+  const [engineMode, setEngineMode] = useState('sim')
+  const [engineModalOpen, setEngineModalOpen] = useState(false)
+  const [realHealth, setRealHealth] = useState({ loading: true, available: false })
+  const [realCwd, setRealCwd] = useState('')
+  const [realBusy, setRealBusy] = useState(false)
+  const [realSessionId, setRealSessionId] = useState(newRealSessionId)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [flowOpen, setFlowOpen] = useState(false)
   const [lessonOpen, setLessonOpen] = useState(false)
@@ -122,8 +148,9 @@ export default function App() {
   }, [topIntent?.id, topIntent?.template, world])
 
   const ghost = analysis.line === input ? analysis.ghost?.suffix ?? '' : ''
+  const isReal = engineMode === 'real'
   const lastEntry = entries[entries.length - 1] ?? null
-  const executedMatch = Boolean(lastEntry && input.trim() && input.trim() === lastEntry.command)
+  const executedMatch = Boolean(lastEntry && !lastEntry.result?.real && input.trim() && input.trim() === lastEntry.command)
   const executedVerification = useMemo(
     () => (executedMatch ? buildVerificationSuggestions(lastEntry.result) : []),
     [executedMatch, lastEntry],
@@ -148,6 +175,20 @@ export default function App() {
     }
   }, [analysis, executedMatch, executedVerification, executedFailure, lastEntry])
 
+  const effectiveAnalysis = useMemo(() => {
+    if (!isReal) return displayAnalysis
+    return {
+      ...analysis,
+      verification: [],
+      failed: false,
+      suggestions: (analysis.suggestions ?? []).filter((suggestion) => suggestion.kind !== 'verify'),
+      nextSteps: (analysis.nextSteps ?? []).filter((suggestion) => suggestion.kind !== 'verify'),
+      ghost: analysis.ghost,
+    }
+  }, [analysis, displayAnalysis, isReal])
+
+  const ghostForInput = isReal ? ghost : executedMatch ? '' : ghost
+
   const totals = useMemo(() => {
     const taskCount = LESSONS.reduce((sum, lesson) => sum + lesson.tasks.length, 0)
     const doneCount = LESSONS.reduce((sum, lesson) => sum + lesson.tasks.filter((task) => completedTasks[task.id]).length, 0)
@@ -157,6 +198,28 @@ export default function App() {
   useEffect(() => {
     writeStorage(WORLD_KEY, world)
   }, [world])
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/pwsh/health', { headers: API_HEADERS })
+      .then(async (response) => {
+        const data = await response.json()
+        if (!active) return
+        setRealHealth({ ...data, loading: false })
+        if (data.initialCwd) setRealCwd((previous) => previous || data.initialCwd)
+      })
+      .catch((error) => {
+        if (!active) return
+        setRealHealth((previous) => ({
+          ...previous,
+          loading: false,
+          available: false,
+          reason: 'server_unavailable',
+          error: error.message,
+        }))
+      })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => () => {
     toastTimers.current.forEach((timeout) => window.clearTimeout(timeout))
@@ -252,9 +315,188 @@ export default function App() {
     }
   }
 
+  async function refreshRealHealth() {
+    setRealHealth((previous) => ({ ...previous, loading: true }))
+    try {
+      const response = await fetch('/api/pwsh/health', { headers: API_HEADERS })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Servidor local de PowerShell indisponível.')
+      setRealHealth({ ...data, loading: false })
+      if (data.initialCwd) setRealCwd((previous) => previous || data.initialCwd)
+    } catch (error) {
+      setRealHealth((previous) => ({
+        ...previous,
+        loading: false,
+        available: false,
+        reason: 'server_unavailable',
+        error: error.message,
+      }))
+    }
+  }
+
+  function switchToSimulator() {
+    if (realBusy) return
+    setEngineMode('sim')
+    setEngineModalOpen(false)
+    setInput('')
+    setHistoryIndex(null)
+    pushToast({ title: 'Simulador ativo', message: 'Nada do que você executar agora toca o seu computador.', tone: 'info' })
+    focusEditor()
+  }
+
+  function switchToReal() {
+    if (realBusy) return
+    if (!realHealth.available) {
+      setEngineModalOpen(true)
+      refreshRealHealth()
+      pushToast({ title: 'PowerShell real indisponível', message: realHealth.error || 'Confira a instalação do PowerShell 7.', tone: 'danger' })
+      return
+    }
+    setEngineMode('real')
+    setEngineModalOpen(false)
+    setInput('')
+    setHistoryIndex(null)
+    if (!realCwd) setRealCwd(realHealth.initialCwd || '')
+    pushToast({
+      title: 'Execução real ativada',
+      message: 'Agora os comandos rodam no seu PC. As trilhas continuam validadas no simulador.',
+      tone: 'danger',
+    })
+    focusEditor()
+  }
+
+  async function resetRealSession() {
+    if (realBusy) return
+    const previousSession = realSessionId
+    const nextSession = newRealSessionId()
+    setRealSessionId(nextSession)
+    setRealCwd(realHealth.initialCwd || '')
+    try {
+      await fetch('/api/pwsh/reset', {
+        method: 'POST',
+        headers: { ...API_HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: previousSession }),
+      })
+      pushToast({ title: 'Nova sessão real', message: 'Variáveis e localização anteriores foram descartadas.', tone: 'info' })
+    } catch (error) {
+      pushToast({ title: 'Sessão reiniciada localmente', message: error.message, tone: 'info' })
+    }
+  }
+
+  function pushRealEntry(command, result, duration) {
+    const entry = {
+      id: newEntryId(entrySequence),
+      command,
+      result,
+      duration,
+      timestamp: Date.now(),
+      mode: 'real',
+    }
+    setEntries((previous) => [...previous.slice(-59), entry])
+    setHistory((previous) => [...previous.slice(-79), command])
+    setHistoryIndex(null)
+    setCommandsRun((previous) => previous + 1)
+  }
+
+  async function executeRealCommand(command) {
+    if (realBusy) return
+    if (!realHealth.available) {
+      setEngineModalOpen(true)
+      refreshRealHealth()
+      pushToast({ title: 'Modo real indisponível', message: 'O servidor local não encontrou o PowerShell.', tone: 'danger' })
+      return
+    }
+    if (/^(clear|cls|clear-host)$/i.test(command)) {
+      setEntries([])
+      setInput('')
+      focusEditor()
+      return
+    }
+
+    setRealBusy(true)
+    const started = performance.now()
+    try {
+      const response = await fetch('/api/pwsh/exec', {
+        method: 'POST',
+        headers: { ...API_HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, sessionId: realSessionId }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const error = new Error(payload.error || `Falha na execução real (HTTP ${response.status}).`)
+        error.payload = payload
+        error.status = response.status
+        throw error
+      }
+      const duration = payload.durationMs ?? Math.round(performance.now() - started)
+      const output = String(payload.output ?? '')
+      const stderr = String(payload.stderr ?? '')
+      const text = [output, stderr ? `stderr:\n${stderr}` : ''].filter(Boolean).join('\n\n')
+      const cwd = payload.cwd || realCwd || realHealth.initialCwd || ''
+      const result = {
+        ok: Boolean(payload.ok),
+        real: true,
+        input: command,
+        statements: [command],
+        stages: [],
+        objects: [],
+        effects: [],
+        hostMessages: [],
+        warnings: [],
+        errors: [],
+        meta: {
+          typeName: `PowerShell real${realHealth.version ? ` ${realHealth.version}` : ''}`,
+          view: text ? 'text' : 'none',
+          text,
+          columns: [],
+        },
+        notes: [
+          `Executado no seu PC em ${displayRealPath(cwd, realHealth.home)} · exit ${payload.exitCode ?? 0}`,
+        ],
+        flags: { real: true },
+      }
+      setRealCwd(cwd)
+      pushRealEntry(command, result, duration)
+    } catch (error) {
+      const payload = error.payload ?? {}
+      const result = {
+        ok: false,
+        real: true,
+        input: command,
+        statements: [command],
+        stages: [],
+        objects: [],
+        effects: [],
+        hostMessages: [],
+        warnings: [],
+        errors: [{
+          message: error.message,
+          hint: payload.code === 'TIMEOUT'
+            ? 'O processo foi encerrado para não travar o console. A próxima execução abre uma nova sessão real.'
+            : 'Confira se o servidor do laboratório continua rodando e se o PowerShell está instalado.',
+        }],
+        meta: { typeName: 'PowerShell real', view: 'none', text: '', columns: [] },
+        notes: [],
+        flags: { real: true },
+      }
+      pushRealEntry(command, result, Math.round(performance.now() - started))
+      if (payload.code === 'TIMEOUT') {
+        setRealSessionId(newRealSessionId())
+        pushToast({ title: 'Comando interrompido', message: 'A sessão real foi reiniciada após exceder o tempo limite.', tone: 'danger' })
+      }
+    } finally {
+      setRealBusy(false)
+      focusEditor()
+    }
+  }
+
   function executeCommand(commandOverride = null) {
     const command = String(commandOverride ?? input).trim()
     if (!command || command.startsWith('#')) return
+    if (engineMode === 'real') {
+      executeRealCommand(command)
+      return
+    }
     const started = performance.now()
     const nextWorld = cloneWorld(world)
     let result
@@ -280,11 +522,12 @@ export default function App() {
     }
 
     const entry = {
-      id: `entry-${Date.now()}-${++entrySequence.current}`,
+      id: newEntryId(entrySequence),
       command,
       result,
       duration,
       timestamp: Date.now(),
+      mode: 'sim',
     }
     setEntries((previous) => [...previous.slice(-59), entry])
     completeLessonTasks(command, result, nextWorld)
@@ -392,6 +635,8 @@ export default function App() {
         world={world}
         activeLesson={activeLesson}
         activeCategory={activeCategory}
+        engineMode={engineMode}
+        onOpenEngine={() => { setEngineModalOpen(true); refreshRealHealth() }}
         onOpenWorld={() => setWorldOpen(true)}
         onOpenHelp={() => setHelpOpen(true)}
         onOpenSidebar={() => setSidebarOpen(true)}
@@ -425,6 +670,7 @@ export default function App() {
             lesson={activeLesson}
             category={activeCategory}
             completedTasks={completedTasks}
+            realMode={isReal}
             onOpenLesson={openActiveLesson}
             onBrowseLessons={browseLessons}
             onUseIntent={useIntentById}
@@ -437,9 +683,20 @@ export default function App() {
                 <span className="composer-prompt-badge">PS</span>
                 <div>
                   <span>Console interativo</span>
-                  <small>{shortPath(world.cwd)}</small>
+                  <small title={isReal ? (realCwd || realHealth.initialCwd) : world.cwd}>
+                    {isReal ? displayRealPath(realCwd || realHealth.initialCwd, realHealth.home) : shortPath(world.cwd)}
+                  </small>
                 </div>
-                <span className="composer-sim-badge"><span className="engine-light" /> simulador</span>
+                <button
+                  type="button"
+                  className={`composer-sim-badge ${isReal ? 'is-real' : ''}`}
+                  onClick={() => { setEngineModalOpen(true); refreshRealHealth() }}
+                  title="Trocar o modo de execução"
+                  aria-label={isReal ? 'Modo real ativo. Trocar modo de execução.' : 'Modo simulador. Trocar modo de execução.'}
+                >
+                  <span className={`engine-light ${isReal ? 'is-real' : ''}`} />
+                  {isReal ? 'meu PC' : 'simulador'}
+                </button>
               </div>
               <div className="composer-actions">
                 <button type="button" className="icon-button" onClick={() => handleHistory(-1)} title="Recuperar comando anterior" aria-label="Recuperar comando anterior" disabled={!history.length}>
@@ -448,9 +705,14 @@ export default function App() {
                 <button type="button" className="icon-button" onClick={() => { setInput(''); setHistoryIndex(null); focusEditor() }} title="Limpar o comando" aria-label="Limpar o comando" disabled={!input}>
                   <Eraser size={15} />
                 </button>
-                <button type="button" className="button button-primary run-button" onClick={() => executeCommand()} disabled={!input.trim()}>
-                  <Play size={14} fill="currentColor" />
-                  Executar
+                <button
+                  type="button"
+                  className={`button ${isReal ? 'button-real' : 'button-primary'} run-button`}
+                  onClick={() => executeCommand()}
+                  disabled={!input.trim() || realBusy}
+                >
+                  {realBusy ? <LoaderCircle size={14} className="spin" /> : <Play size={14} fill="currentColor" />}
+                  {realBusy ? 'Executando…' : isReal ? 'Executar no PC' : 'Executar'}
                 </button>
               </div>
             </header>
@@ -470,9 +732,9 @@ export default function App() {
                     focusEditor()
                   }
                 }}
-                canAcceptGhost={Boolean(!executedMatch && ghost && analysis.ghost?.line)}
-                ghost={ghost}
-                placeholderText="Digite um comando ou descreva o que você quer fazer…"
+                canAcceptGhost={Boolean(ghostForInput && analysis.ghost?.line)}
+                ghost={ghostForInput}
+                placeholderText={isReal ? 'Comando real no seu PC. Enter executa de verdade…' : 'Digite um comando ou descreva o que você quer fazer…'}
               />
             </div>
 
@@ -482,14 +744,21 @@ export default function App() {
                 <span><kbd>Tab</kbd> completar</span>
                 <span><kbd>↑</kbd><kbd>↓</kbd> histórico</span>
               </div>
-              <span className="composer-mantra"><Sparkles size={11} /> objetos, não texto</span>
+              <span className={`composer-mantra ${isReal ? 'is-real' : ''}`}>
+                {isReal ? <><Monitor size={11} /> comandos reais</> : <><Sparkles size={11} /> objetos, não texto</>}
+              </span>
             </div>
 
-            <SuggestionBar analysis={displayAnalysis} ghost={executedMatch ? '' : ghost} onApply={handleApplySuggestion} />
+            <SuggestionBar analysis={effectiveAnalysis} ghost={ghostForInput} onApply={handleApplySuggestion} realMode={isReal} />
           </section>
 
           <Terminal
             entries={entries}
+            realMode={isReal}
+            realVersion={realHealth.version}
+            realCwd={realCwd || realHealth.initialCwd}
+            busy={realBusy}
+            onResetReal={resetRealSession}
             onReuse={(command) => insertIntoEditor(command)}
             onCopy={copyCommand}
             onInsert={(value) => insertIntoEditor(value)}
@@ -499,9 +768,12 @@ export default function App() {
 
         {flowOpen ? <button type="button" className="mobile-backdrop flow-backdrop" aria-label="Fechar radiografia" onClick={() => setFlowOpen(false)} /> : null}
         <FlowPanel
-          analysis={displayAnalysis}
-          preview={displayPreview}
-          executed={executedMatch}
+          analysis={effectiveAnalysis}
+          preview={isReal ? preview : displayPreview}
+          executed={!isReal && executedMatch}
+          realMode={isReal}
+          realCwd={realCwd || realHealth.initialCwd}
+          realVersion={realHealth.version}
           intentPreview={intentPreview}
           world={world}
           isOpen={flowOpen}
@@ -517,11 +789,13 @@ export default function App() {
 
       <footer className="statusbar">
         <div className="statusbar-left">
-          <span className="statusbar-live"><span className="live-dot" /> Simulador local</span>
+          <span className={`statusbar-live ${isReal ? 'is-real' : ''}`}>
+            <span className={`live-dot ${isReal ? 'is-real' : ''}`} /> {isReal ? 'Executando no seu PC' : 'Simulador local'}
+          </span>
           <span className="statusbar-sep" />
-          <span className="statusbar-domain">{world.domain}</span>
+          <span className="statusbar-domain">{isReal ? displayRealPath(realCwd || realHealth.initialCwd, realHealth.home) : world.domain}</span>
           <span className="statusbar-sep desktop-only" />
-          <span className="statusbar-note desktop-only">nenhum comando toca o seu PC</span>
+          <span className={`statusbar-note desktop-only ${isReal ? 'is-real' : ''}`}>{isReal ? 'comandos reais · use com cuidado' : 'nenhum comando toca o seu PC'}</span>
         </div>
         <div className="statusbar-center desktop-only">
           <span>{LESSONS.length} trilhas</span>
@@ -558,16 +832,32 @@ export default function App() {
         />
       ) : null}
 
+      {engineModalOpen ? (
+        <EngineModal
+          health={realHealth}
+          mode={engineMode}
+          busy={realBusy}
+          realCwd={realCwd || realHealth.initialCwd}
+          onClose={() => setEngineModalOpen(false)}
+          onChooseSimulator={switchToSimulator}
+          onChooseReal={switchToReal}
+          onRefreshHealth={refreshRealHealth}
+          onResetSession={resetRealSession}
+        />
+      ) : null}
+
       {helpOpen ? (
         <HelpModal
           onClose={() => setHelpOpen(false)}
           onStartAd={() => {
             setHelpOpen(false)
+            setEngineMode('sim')
             setActiveLessonId('ad-primeiro-contato')
             setLessonOpen(true)
           }}
           onStartFirst={() => {
             setHelpOpen(false)
+            setEngineMode('sim')
             setActiveLessonId('inicio-primeiro')
             setLessonOpen(true)
           }}

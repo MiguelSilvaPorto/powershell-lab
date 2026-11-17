@@ -1,10 +1,11 @@
-import { ArrowRight, ArrowUpRight, BookOpen, CheckCircle2, Compass, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowRight, ArrowUpRight, BookOpen, CheckCircle2, Compass, Sparkles } from 'lucide-react'
 import TrackIcon from './TrackIcon.jsx'
 
 export default function LessonStrip({
   lesson,
   category,
   completedTasks,
+  realMode = false,
   onOpenLesson,
   onBrowseLessons,
   onUseIntent,
@@ -55,9 +56,12 @@ export default function LessonStrip({
         <div className="lesson-progress-row">
           <span className="lesson-progress-bar"><span style={{ width: `${percent}%` }} /></span>
           <span className="lesson-progress-count">{done}/{total} tarefas</span>
-          {!complete && currentTask ? <span className="lesson-current-task">Próxima: {currentTask.title}</span> : null}
+          {realMode ? (
+            <span className="lesson-real-warning"><AlertTriangle size={10} /> no modo real, as tarefas são validadas apenas no simulador</span>
+          ) : !complete && currentTask ? <span className="lesson-current-task">Próxima: {currentTask.title}</span> : null}
         </div>
       </div>
+      {realMode ? <span className="lesson-real-badge"><AlertTriangle size={10} /> MEU PC</span> : null}
       <div className="lesson-strip-actions">
         <button type="button" className="button button-ghost" onClick={onOpenLesson}>
           <BookOpen size={14} />
